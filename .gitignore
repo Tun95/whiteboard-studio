@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+kokoro-env/
+node_modules/
+*.mp4
+*.wav
+*.mp3
+*.mov
+*.pt
+*.pth
+*.onnx
+*.egg-info/
