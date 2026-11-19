@@ -3,10 +3,11 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   <div class="ed" id="edRoot">
     <div class="ed-bar">
       <div class="grp"><button id="edUndo" title="Undo the last change (Ctrl+Z)" type="button">↶ Undo</button><button id="edRedo" title="Redo (Ctrl+Y)" type="button">↷ Redo</button></div>
-      <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂ Cut here</button><button id="edDelete" title="Remove the selected item (Delete key)" type="button">🗑 Remove</button></div>
-      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Add text</button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼 Add picture</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Add music or voice</button></div>
-      <div class="grp right"><button id="edZoomOut" title="Zoom the timeline out (-)" type="button">−</button><span class="note">Zoom</span><button id="edZoomIn" title="Zoom the timeline in (+)" type="button">+</button><button id="edFit" title="Fit the whole video on screen" type="button">Fit</button>
-        <button class="primary" id="edExportBtn" type="button">Export video</button></div>
+      <div class="grp"><button id="edCopy" title="Copy the selected items (Ctrl+C)" type="button">⧉ Copy</button><button id="edPaste" title="Paste at the red line (Ctrl+V)" type="button">📋 Paste</button></div>
+      <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂ Cut</button><button id="edDelete" title="Remove the selected items (Delete key)" type="button">🗑 Remove</button></div>
+      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Text</button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼 Picture</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Music / voice</button></div>
+      <div class="grp"><button id="edZoomOut" title="Zoom the timeline out (-)" type="button">−</button><span class="zl">Zoom</span><button id="edZoomIn" title="Zoom the timeline in (+)" type="button">+</button><button id="edFit" title="Fit the whole video on screen" type="button">Fit</button></div>
+      <button class="primary expo" id="edExportBtn" type="button">⬇ Export video</button>
     </div>
     <div class="ed-top">
       <section class="ed-pool">
@@ -60,7 +61,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   function restore(js){ Object.assign(st, JSON.parse(js)); st.selK=""; M.clear(); layoutAll(); renderInsp(); saveProj(); }
   function undo(){ if(!undoS.length) return; redoS.push(snapshot()); restore(undoS.pop()); btns(); }
   function redo(){ if(!redoS.length) return; undoS.push(snapshot()); restore(redoS.pop()); btns(); }
-  function btns(){ $("#edUndo",el).disabled = !undoS.length; $("#edRedo",el).disabled = !redoS.length; }
+  function btns(){ $("#edUndo",el).disabled = !undoS.length; $("#edRedo",el).disabled = !redoS.length; $("#edPaste",el).disabled = !(typeof CB !== "undefined" && CB && CB.length); $("#edCopy",el).disabled = !st.selK; }
 
   // ---------------------------------------------------------------- selection
   st.overlays = st.overlays || [];
@@ -73,7 +74,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(!k){ M.clear(); st.selK = ""; st.selI = 0; }
     else if(add){ const key = mk(k,i); if(M.has(key)){ M.delete(key); const g = group().pop(); st.selK = g ? g.k : ""; st.selI = g ? g.i : 0; } else { M.add(key); st.selK = k; st.selI = i; } }
     else { M.clear(); M.add(mk(k,i)); st.selK = k; st.selI = i; }
-    renderTimeline(); renderInsp(); P.textKey = ""; P.sync(P.playing);
+    renderTimeline(); renderInsp(); P.textKey = ""; P.sync(P.playing); btns();
   }
 
   // ---------------------------------------------------------------- player (live preview)
@@ -269,13 +270,41 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     snap(); const s = r1(c.start + local*(c.speed||1));
     const a = {...c, end:s}, b = {...c, start:s}; st.clips.splice(i,1,a,b); st.selK="clip"; st.selI=i+1; layoutAll(); renderInsp(); saveProj();
   }
+  // ---- copy / cut / paste on the timeline
+  let CB = null;
+  function copySel(quiet){
+    const g = group(); if(!g.length && st.selK) g.push({k:st.selK, i:st.selI});
+    if(!g.length){ toast("Click something on the timeline first, then copy it."); return false; }
+    CB = g.map(x=>({k:x.k, i:x.i, item:JSON.parse(JSON.stringify(LIST(x.k)[x.i]))})); btns();
+    if(!quiet) toast(`Copied ${g.length} item${g.length>1?"s":""}. Move the red line where you want it, then press Paste.`); return true;
+  }
+  function pasteCB(){
+    if(!CB || !CB.length){ toast("Nothing copied yet. Select something on the timeline and press Copy."); return; }
+    snap(); const t = r1(P.t), made = [];
+    const clips = CB.filter(c=>c.k==="clip").sort((a,b)=>a.i-b.i);
+    if(clips.length){
+      let idx = st.clips.length;
+      for(let j=0;j<st.clips.length;j++){ const s0 = P.starts[j], e0 = s0 + clipLen(st.clips[j]); if(t < e0 - 0.05){ idx = t <= s0 + 0.05 ? j : j + 1; break; } }
+      clips.forEach((c,n)=>st.clips.splice(idx+n, 0, JSON.parse(JSON.stringify(c.item))));
+      clips.forEach((_,n)=>made.push(["clip", idx+n]));
+    }
+    const timed = CB.filter(c=>c.k!=="clip");
+    if(timed.length){
+      const minStart = Math.min(...timed.map(c=>c.item.start||0)), d = t - minStart;
+      timed.forEach(c=>{ const it = JSON.parse(JSON.stringify(c.item)); it.start = r1(Math.max(0,(it.start||0)+d)); if(c.k!=="track" && it.end) it.end = r1(it.end+d);
+        if(Math.abs(d) < 0.05 && it.x!=null && it.y!=null){ it.x = clamp(r2(it.x+0.04),0,1); it.y = clamp(r2(it.y+0.04),0,1); }   // so a copy at the same time is not hidden behind the original
+        const arr = LIST(c.k); arr.push(it); made.push([c.k, arr.length-1]); });
+    }
+    M.clear(); made.forEach(([k,i])=>M.add(mk(k,i))); const last = made[made.length-1]; st.selK = last[0]; st.selI = last[1];
+    P.ovKey = ""; layoutAll(); renderInsp(); saveProj(); toast(`Pasted ${made.length} item${made.length>1?"s":""} at ${mmss(t)}.`);
+  }
   function removeSel(){
     if(!st.selK) { toast("Click something on the timeline first."); return; } snap();
     const g = group(); if(!g.length) g.push({k:st.selK, i:st.selI});
     ["clip","text","track","ov"].forEach(k=>{ g.filter(x=>x.k===k).map(x=>x.i).sort((a,b)=>b-a).forEach(i=>LIST(k).splice(i,1)); });
     M.clear(); st.selK=""; P.ovKey = ""; layoutAll(); renderInsp(); saveProj();
   }
-  $("#edSplit",el).onclick = splitHere; $("#edDelete",el).onclick = removeSel; $("#edUndo",el).onclick = undo; $("#edRedo",el).onclick = redo;
+  $("#edCopy",el).onclick = ()=>copySel(); $("#edPaste",el).onclick = pasteCB; $("#edSplit",el).onclick = splitHere; $("#edDelete",el).onclick = removeSel; $("#edUndo",el).onclick = undo; $("#edRedo",el).onclick = redo;
 
   // ---------------------------------------------------------------- timeline
   const LAB = 96;
@@ -416,7 +445,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
       box.innerHTML = `<h2>Your video</h2><p class="note">Click a clip, text or sound on the timeline to change it here.</p>
         ${row("Video shape",`<select data-p="size"><option value="1920x1080">Wide 1920x1080</option><option value="1280x720">Wide 1280x720</option><option value="1080x1920">Tall 1080x1920 (Shorts / Reels)</option></select>`)}
         <div class="two"><div>${row("Fade in (s)",`<input type="number" data-p="fade_in" min="0" step="0.1" value="${st.fade_in}">`)}</div><div>${row("Fade out (s)",`<input type="number" data-p="fade_out" min="0" step="0.1" value="${st.fade_out}">`)}</div></div>
-        <p class="note" style="margin-top:14px"><b>Shortcuts</b><br>Space: play / pause · S: cut here · Delete: remove<br>← →: step 0.1s (Shift: 1s) · Ctrl+Z: undo<br>Mouse wheel on the timeline: zoom · Shift + wheel: slide sideways<br>Ctrl + click: select several · Ctrl + A: select all</p>`;
+        <p class="note" style="margin-top:14px"><b>Shortcuts</b><br>Space: play / pause · S: cut here · Delete: remove<br>← →: step 0.1s (Shift: 1s) · Ctrl+Z: undo<br>Mouse wheel on the timeline: zoom · Shift + wheel: slide sideways<br>Ctrl + click: select several · Ctrl + A: select all<br>Ctrl + C / X / V: copy, cut, paste at the red line</p>`;
       $("select[data-p=size]",box).value = st.size; return;
     }
     if(M.size > 1){
@@ -519,6 +548,9 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(k===" "){ e.preventDefault(); $("#edPlay",el).click(); }
     else if(ctrl && k.toLowerCase()==="z"){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if(ctrl && k.toLowerCase()==="y"){ e.preventDefault(); redo(); }
+    else if(ctrl && k.toLowerCase()==="c"){ e.preventDefault(); copySel(); }
+    else if(ctrl && k.toLowerCase()==="x"){ e.preventDefault(); if(copySel(true)) removeSel(); }
+    else if(ctrl && k.toLowerCase()==="v"){ e.preventDefault(); pasteCB(); }
     else if(ctrl && k.toLowerCase()==="a"){ e.preventDefault(); M.clear(); [["clip",st.clips],["text",st.texts],["track",st.tracks],["ov",st.overlays]].forEach(([kk,l])=>l.forEach((_,i)=>M.add(mk(kk,i)))); const g = group()[0]; if(g){ st.selK = g.k; st.selI = g.i; } renderTimeline(); renderInsp(); P.ovKey=""; P.sync(P.playing); }
     else if(k==="s" || k==="S"){ splitHere(); }
     else if(k==="Delete" || k==="Backspace"){ e.preventDefault(); removeSel(); }
