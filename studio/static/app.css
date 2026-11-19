@@ -88,3 +88,13 @@ a{color:var(--brand)}code{font-size:12px;word-break:break-all}
 
 input[type=checkbox]{width:auto;margin:3px 0 0}
 label.check{display:flex;gap:9px;align-items:flex-start;color:var(--ink);font-size:14px}
+
+/* friendly problems + delete */
+.problem{border:1px solid #f0c9c9;background:#fff6f6;border-radius:12px;padding:14px 16px;margin:10px 0}
+.problem b{display:block;font-size:16px;color:#9b2c2c;margin-bottom:6px}
+.problem p{margin:4px 0}.problem .fx{font-weight:600}
+.problem details{margin-top:10px;font-size:13px}.problem pre{max-height:180px;overflow:auto;background:#fff;border:1px solid #eee;padding:8px;white-space:pre-wrap}
+.problem .act{margin-top:8px}
+dialog.problemdlg{max-width:560px}
+button.danger{background:#c0392b;color:#fff;border-color:#c0392b}
+button.small.del,button.del{font-size:12px;padding:4px 10px;color:#c0392b;border-color:#e8b4ae;background:#fff}

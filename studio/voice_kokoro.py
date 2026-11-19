@@ -73,7 +73,17 @@ def main():
     work = os.path.join(a.out, a.name + "_parts")
     if a.fresh and os.path.isdir(work): shutil.rmtree(work)
     os.makedirs(work, exist_ok=True)
-    pipe = KPipeline(lang_code=lang)
+    def _fail(e):
+        import traceback; traceback.print_exc()
+        if lang in ("j", "z"):
+            print(f"STUDIO_ERROR:LANGPACK:{lang}", flush=True)
+        else:
+            print(f"STUDIO_ERROR:VOICE:{type(e).__name__}: {e}", flush=True)
+        sys.exit(3)
+    try:
+        pipe = KPipeline(lang_code=lang)
+    except Exception as e:
+        _fail(e)
     total = len(items); t0 = time.time(); done_s = 0.0
     paths = []
     for i, (kind, val) in enumerate(items, 1):
@@ -88,8 +98,11 @@ def main():
             sp = base + (m["bang"] if s.endswith("!") else 0) + (m["ask"] if s.endswith("?") else 0)
             if a.mode == "energetic" and j % 2 == 1: sp += 0.03
             sp = max(0.7, min(1.4, sp))
-            for _, _, audio in pipe(s, voice=a.voice, speed=sp):
-                pieces.append(np.asarray(audio, dtype=np.float32))
+            try:
+                for _, _, audio in pipe(s, voice=a.voice, speed=sp):
+                    pieces.append(np.asarray(audio, dtype=np.float32))
+            except Exception as e:
+                _fail(e)
             if j < len(sents) - 1: pieces.append(np.zeros(int(m["sent"] * SR), dtype=np.float32))
         clip = np.concatenate(pieces) if pieces else np.zeros(1, dtype=np.float32)
         tmp = p + ".tmp.wav"; sf.write(tmp, clip, SR); os.replace(tmp, p)

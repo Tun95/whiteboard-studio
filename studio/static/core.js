@@ -19,11 +19,53 @@ const icon = n => `<svg viewBox="0 0 24 24">${ICONS[n]||""}</svg>`;
 async function api(path, opts){
   const r = await fetch(path, opts);
   const j = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(j.error || ("Request failed ("+r.status+")"));
+  if(!r.ok){ const e = new Error(j.error || ("Request failed ("+r.status+")")); e.help = j.help; throw e; }
   return j;
 }
 const post = (path, body) => api(path, {method:"POST", body:JSON.stringify(body||{})});
 const upload = (kind, file) => api(`/api/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, {method:"POST", body:file});
+// Friendly problem card: title, what happened, what to do, optional action button, copyable details.
+function problemCard(h, fallback){
+  const d = document.createElement("div"); d.className = "problem";
+  if(!h){ d.innerHTML = `<b>Something went wrong</b><p></p>`; $("p", d).textContent = fallback || "Please try again."; return d; }
+  d.innerHTML = `<b></b><p class="ex"></p><p class="fx"></p><div class="row act"></div>
+    <details><summary>Technical details (for support)</summary><pre></pre><button type="button" class="small cp">Copy details</button></details>`;
+  $("b", d).textContent = h.title; $(".ex", d).textContent = h.explain; $(".fx", d).textContent = h.fix;
+  $("pre", d).textContent = h.details || "(none)";
+  $(".cp", d).onclick = ()=>{ try{ navigator.clipboard.writeText(h.details||""); toast("Copied."); }catch(e){} };
+  if(h.action && h.action.type==="install_lang"){
+    const b = document.createElement("button"); b.className = "primary"; b.textContent = h.action.label;
+    b.onclick = async ()=>{
+      b.disabled = true; b.textContent = "Installing… please wait";
+      try{
+        const {id} = await post("/api/voice/install-language", {lang:h.action.lang});
+        while(true){ await new Promise(r=>setTimeout(r,1500)); const j = await api("/api/job?id="+id);
+          if(j.status==="done"){ toast("Installed. Try the voice again."); d.remove(); return; }
+          if(j.status==="error"){ b.disabled=false; b.textContent=h.action.label; $(".fx",d).textContent = j.error; if(j.help) $("pre",d).textContent=j.help.details; return; } }
+      }catch(e){ b.disabled=false; b.textContent=h.action.label; toast(e.message,true); }
+    };
+    $(".act", d).appendChild(b);
+  }
+  return d;
+}
+function showProblem(e){
+  const dlg = document.createElement("dialog"); dlg.className = "problemdlg";
+  dlg.appendChild(problemCard(e.help, e.message));
+  const r = document.createElement("div"); r.className = "row"; const c = document.createElement("button"); c.textContent = "Close"; c.onclick = ()=>{dlg.close(); dlg.remove();}; r.appendChild(c); dlg.appendChild(r);
+  document.body.appendChild(dlg); dlg.showModal();
+}
+async function confirmDelete(what){
+  return new Promise(res=>{
+    const dlg = document.createElement("dialog"); dlg.innerHTML = `<h3>Delete this?</h3><p class="note"></p><div class="row"><button class="danger yes">Yes, delete</button><button class="no">Keep it</button></div>`;
+    $("p", dlg).textContent = what + " will be removed from this computer. This cannot be undone.";
+    $(".yes", dlg).onclick = ()=>{dlg.close(); dlg.remove(); res(true);}; $(".no", dlg).onclick = ()=>{dlg.close(); dlg.remove(); res(false);};
+    document.body.appendChild(dlg); dlg.showModal();
+  });
+}
+async function deleteItem(kind, name, label){
+  if(!(await confirmDelete(label || name))) return false;
+  try{ await post("/api/delete", {kind, name}); toast("Deleted."); return true; }catch(e){ toast(e.message, true); return false; }
+}
 function toast(msg, err){
   const t = document.createElement("div"); t.className = "toast"+(err?" err":""); t.textContent = msg;
   $("#toasts").appendChild(t); setTimeout(()=>t.remove(), err?7000:3500);
@@ -68,7 +110,7 @@ async function listen(voiceId, btn, text){
     au.src = r.url + "?t=" + Date.now(); await au.play();
     btn.classList.remove("busy"); btn.classList.add("on"); btn.textContent = "■ Stop";
     au.onended = au.onpause = ()=>{ btn.classList.remove("on"); btn.textContent = "▶ Listen"; };
-  }catch(e){ btn.classList.remove("busy","on"); btn.textContent = "▶ Listen"; toast(e.message, true); }
+  }catch(e){ btn.classList.remove("busy","on"); btn.textContent = "▶ Listen"; if(e.help) showProblem(e); else toast(e.message, true); }
 }
 // Adds a voice dropdown + Listen button into a container; returns {get(), set(v)}
 function voicePicker(mount, key){
@@ -85,16 +127,16 @@ function voicePicker(mount, key){
 class JobPanel{
   constructor(mount){
     mount.innerHTML = `<div class="card hidden"><h2>Result</h2><div class="bar"><i></i></div><div class="note state">Starting…</div>
-      <pre class="log hidden"></pre><video controls class="hidden"></video>
+      <div class="pslot"></div><pre class="log hidden"></pre><video controls class="hidden"></video>
       <div class="row hidden save"><a class="btn dl">Download MP4</a><span class="note">Also saved in your Whiteboard Wave Studio folder.</span></div></div>`;
     this.box = $(".card", mount); this.bar = $(".bar i", mount); this.state = $(".state", mount);
-    this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount);
+    this.pslot = $(".pslot", mount); this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount);
   }
   async run(path, body){
-    const b = this.box; b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
+    this.pslot.innerHTML = ""; const b = this.box; b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
     this.log.classList.remove("hidden"); this.log.textContent = ""; this.bar.style.width = "3%"; this.state.textContent = "Working… this can take a few minutes.";
     let id;
-    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = e.message; this.log.classList.add("hidden"); return null; }
+    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = ""; this.pslot.appendChild(problemCard(e.help, e.message)); this.log.classList.add("hidden"); return null; }
     while(true){
       await new Promise(r=>setTimeout(r,1200));
       let j; try{ j = await api("/api/job?id="+id); }catch(e){ this.state.textContent = e.message; return null; }
@@ -107,7 +149,7 @@ class JobPanel{
         this.dl.href = url; this.dl.download = j.output; this.save.classList.remove("hidden");
         return j.output;
       }
-      if(j.status==="error"){ this.state.textContent = "Something went wrong: "+j.error; return null; }
+      if(j.status==="error"){ this.state.textContent = ""; this.pslot.appendChild(problemCard(j.help, j.error)); this.log.classList.add("hidden"); return null; }
     }
   }
 }

@@ -25,7 +25,7 @@ registerPage("ads", {title:"App ads", sub:"Phone adverts with captions, zooms an
     packs = (await api("/api/library")).packs;
     if(!packs.find(p=>p.name===st.pack)) st.pack = packs[0] ? packs[0].name : "";
     $("#aPacks",el).innerHTML = packs.map(p=>`<div class="pack ${p.name===st.pack?'sel':''}" data-n="${esc(p.name)}"><b>${esc(p.name)}</b>
-      ${p.has_voice?'<span class="tag">voice ready</span>':''}${p.has_preview?'<span class="tag">preview</span>':''}</div>`).join("") || '<div class="note">No ad packs yet. Import one below.</div>';
+      ${p.has_voice?'<span class="tag">voice ready</span>':''}${p.has_preview?'<span class="tag">preview</span>':''} <button class="del small" data-del="${esc(p.name)}" type="button">Delete</button></div>`).join("") || '<div class="note">No ad packs yet. Import one below.</div>';
     check();
   }
   function check(){
@@ -38,6 +38,8 @@ registerPage("ads", {title:"App ads", sub:"Phone adverts with captions, zooms an
     const w=$("#aProblem",el); w.textContent=msg; w.classList.toggle("hidden",!msg);
     $("#aMake",el).disabled = !!msg || $("#aMake",el).dataset.busy==="1";
   }
+  $("#aPacks",el).addEventListener("click", async e=>{ const d=e.target.closest("[data-del]"); if(!d) return; e.stopImmediatePropagation();
+    if(await deleteItem("pack", d.dataset.del, "The ad pack “"+d.dataset.del+"”")){ if(st.pack===d.dataset.del) st.pack=""; saveProj(); load(); } }, true);
   $("#aPacks",el).onclick = e=>{ const c=e.target.closest(".pack"); if(c){ st.pack=c.dataset.n; saveProj(); load(); } };
   $("#aImport",el).onclick = ()=>$("#aFile",el).click();
   $("#aFile",el).onchange = async e=>{

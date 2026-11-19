@@ -56,18 +56,25 @@ def capabilities(settings: dict) -> dict:
     return caps
 
 class JobError(Exception):
-    pass
+    """A problem with a plain-language message. `help` (optional) holds title / explain / fix / action / details."""
+    def __init__(self, message, help=None):
+        super().__init__(message)
+        self.help = help
 
-def _run(cmd: list[str], log, cwd=None) -> None:
+def _run(cmd: list[str], log, cwd=None, what: str = "video") -> None:
+    from collections import deque
+    from . import errors
+    tail = deque(maxlen=80)
     log("$ " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
     p = subprocess.Popen(cmd, cwd=cwd, env=_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, encoding="utf-8", errors="replace")
     for line in p.stdout:
         line = line.rstrip()
         if line:
-            log(line)
+            log(line); tail.append(line)
     if p.wait() != 0:
-        raise JobError(f"A step failed (exit code {p.returncode}). See the log above.")
+        h = errors.explain("\n".join(tail), what)
+        raise JobError(h["title"] + ". " + h["explain"], h)
 
 def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict, log) -> None:
     work = out_wav.parent / "_voice_work"
@@ -76,7 +83,7 @@ def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict,
     script.write_text(text, encoding="utf-8")
     _run([_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")),
           "--script", str(script), "--out", str(work), "--name", out_wav.stem,
-          "--voice", voice, "--mode", style, "--fresh"], log)
+          "--voice", voice, "--mode", style, "--fresh"], log, what="voice")
     produced = work / (out_wav.stem + ".wav")
     if not produced.exists():
         raise JobError("The voice step finished but no audio file was made.")
@@ -252,7 +259,7 @@ def run_ad(project: Path, opts: dict, settings: dict, log, step) -> Path:
         log(f"Making the voice ({opts.get('voice', 'am_liam')})...")
         _run([_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")), "--script", str(script),
               "--out", str(pack / "2-audio"), "--split", "--prefix", "scene", "--voice", opts.get("voice", "am_liam"),
-              "--mode", opts.get("style", "energetic"), "--fresh", "--name", "adtmp"], log)
+              "--mode", opts.get("style", "energetic"), "--fresh", "--name", "adtmp"], log, what="voice")
     step()
     jf = "ad-preview.json" if preview and (pack / "ad-preview.json").is_file() else "ad.json"
     suffix = "-preview" if preview else ""
@@ -265,7 +272,7 @@ def run_ad(project: Path, opts: dict, settings: dict, log, step) -> Path:
         cmd += ["--scene", str(int(opts["scene"]))]
         out = out.with_name(out.stem + f"-scene{int(opts['scene'])}.mp4"); cmd[cmd.index("-o") + 1] = str(out)
     log("Rendering the ad...")
-    _run(cmd, log, cwd=str(pack))
+    _run(cmd, log, cwd=str(pack), what="ad")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
@@ -381,8 +388,64 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
            "-map", f"[{vlabel}]", "-map", f"[{alabel}]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{total:.3f}", str(out)]
     log(f"Exporting {len(clips)} clip(s), about {total:.1f} seconds...")
-    _run(cmd, log, cwd=str(work))
+    _run(cmd, log, cwd=str(work), what="edit")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
     return out
+
+
+# ----------------------------------------------------------------------------- language packs (Japanese, Mandarin)
+LANG_PACKS = {"j": ("misaki[ja]", "ja"), "z": ("misaki[zh]", "zh")}
+
+def lang_status(settings: dict) -> dict:
+    out = {}
+    for code, (_pkg, mod) in LANG_PACKS.items():
+        try:
+            r = subprocess.run([_kokoro_python(settings), "-c", f"from misaki import {mod}"], env=_env(), capture_output=True, timeout=120)
+            out[code] = r.returncode == 0
+        except Exception:
+            out[code] = False
+    return out
+
+def install_language_pack(lang: str, settings: dict, log, step) -> None:
+    if lang not in LANG_PACKS:
+        raise JobError("That language does not need an add-on.")
+    pkg, mod = LANG_PACKS[lang]
+    py = _kokoro_python(settings)
+    log(f"Installing {pkg} ... (needs the internet, please wait)")
+    _run([py, "-m", "pip", "install", "--upgrade", pkg], log, what="install")
+    step()
+    if lang == "j":
+        log("Downloading the Japanese dictionary (a large file, this can take several minutes)...")
+        try:
+            _run([py, "-m", "unidic", "download"], log, what="install")
+        except JobError as e:
+            log("The dictionary download did not finish: " + str(e))
+    step()
+    r = subprocess.run([py, "-c", f"from misaki import {mod}"], env=_env(), capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        from . import errors
+        h = errors.explain(r.stdout + "\n" + r.stderr, "install")
+        h["action"] = None
+        raise JobError("The add-on could not be installed. " + h["explain"], h)
+    log("Done. You can use the voices now.")
+
+# ----------------------------------------------------------------------------- delete
+DELETE_FOLDERS = {"video": "out", "upload": "media", "audio": "audio", "image": "images"}
+
+def delete_item(project: Path, kind: str, name: str) -> None:
+    if kind == "pack":
+        d = project / "ads" / safe_name(name)
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+        return
+    if kind == "samples":
+        shutil.rmtree(config.data_dir() / "voice-samples", ignore_errors=True)
+        return
+    folder = DELETE_FOLDERS.get(kind)
+    if not folder:
+        raise JobError("Nothing to delete.")
+    f = project / folder / safe_name(name)
+    if f.is_file():
+        f.unlink()

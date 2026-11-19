@@ -39,3 +39,9 @@ Built from `whiteboard-animator` (MIT) + Kokoro voice. Owner: Akande Tunji.
     python run_studio.py                       # opens the browser
     set PYTHONPATH=whiteboard-animator         # Windows, if the animator is not pip-installed
 - [x] Backend: voice library/samples, manhwa runner, ad-pack runner, editor (ffmpeg) tested. UI tabs: in progress
+
+## Phase 2a (done): friendly errors, JA/ZH language packs, delete
+- studio/errors.py explains failures in plain language; jobs carry `help`; UI shows problem card with copyable technical details.
+- Japanese/Mandarin: voice_kokoro prints STUDIO_ERROR:LANGPACK; one-click install (misaki[ja]/[zh], unidic) via /api/voice/install-language. Untested against real Kokoro (sandbox has none) — if still failing, ask user for "Technical details".
+- Delete: /api/delete; buttons in Library, ad packs, Voices (clear samples).
+## Next: Editor rewrite (live preview timeline), App Ads guided wizard, plain-language pass, donate link, installer build.

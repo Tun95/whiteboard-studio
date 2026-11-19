@@ -30,7 +30,7 @@ class State:
             if any(j["status"] == "running" for j in self.jobs.values()):
                 raise RuntimeError("Something is already being made. Wait for it to finish.")
             jid = uuid.uuid4().hex[:10]
-            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None}
+            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None, "help": None}
             self.jobs[jid] = job
         def log(line: str):
             job["log"].append(line); del job["log"][:-400]
@@ -42,7 +42,7 @@ class State:
                 job["output"] = out.name if out else None
                 job["status"] = "done"
             except engine.JobError as e:
-                job["error"] = str(e); job["status"] = "error"
+                job["error"] = str(e); job["help"] = e.help; job["status"] = "error"
             except Exception as e:
                 log(traceback.format_exc()); job["error"] = f"Unexpected problem: {e}"; job["status"] = "error"
         threading.Thread(target=work, daemon=True).start()
@@ -122,6 +122,7 @@ class Handler(BaseHTTPRequestHandler):
                 try: data = json.loads(f.read_text(encoding="utf-8"))
                 except (OSError, ValueError): pass
             return self._json(data)
+        if p == "/api/voice/languages": return self._json(engine.lang_status(STATE.settings))
         if p == "/api/library": return self._json(library())
         if p == "/api/media/info":
             try: return self._json(engine.media_info(engine._find_media(STATE.project, (q.get("file") or [""])[0])))
@@ -169,13 +170,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step))})
             if p == "/api/edit/render":
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
+            if p == "/api/delete":
+                engine.delete_item(S.project, body.get("kind", ""), body.get("name", ""))
+                return self._json({"ok": True})
+            if p == "/api/voice/install-language":
+                lang = body.get("lang", "")
+                return self._json({"id": S.start_job(2, lambda log, step: (engine.install_language_pack(lang, S.settings, log, step), None)[1])})
             if p == "/api/voice/sample":
                 if S.caps is not None and not S.caps.get("kokoro"):
                     return self._json({"error": "Kokoro is not installed on this computer, so voices cannot be previewed yet."}, 400)
                 out = engine.voice_sample(body.get("voice", ""), body.get("text", ""), S.settings)
                 return self._json({"url": "/files/samples/" + out.name})
         except ValueError as e: return self._json({"error": str(e)}, 400)
-        except engine.JobError as e: return self._json({"error": str(e)}, 400)
+        except engine.JobError as e: return self._json({"error": str(e), "help": e.help}, 400)
         except RuntimeError as e: return self._json({"error": str(e)}, 409)
         return self._json({"error": "not found"}, 404)
 
