@@ -1,6 +1,6 @@
 """Tiny local web server: the app window is a web page served only to this computer (127.0.0.1)."""
 from __future__ import annotations
-import json, mimetypes, socket, threading, traceback, uuid, webbrowser
+import json, mimetypes, socket, threading, time, traceback, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -17,12 +17,40 @@ class State:
         self.project = config.project_dir()
         (self.project / "media").mkdir(exist_ok=True)
         self.caps: dict | None = None
+        self.setup = {"state": "checking", "job": None, "missing": []}
         self.jobs: dict[str, dict] = {}
         self.lock = threading.Lock()
         threading.Thread(target=self._probe, daemon=True).start()
 
     def _probe(self):
         self.caps = engine.capabilities(self.settings)
+        self.check_setup()
+
+    def check_setup(self, auto=True):
+        """Quietly checks Japanese/Mandarin and fixes them in the background if needed (so users never see an install error)."""
+        if not (self.caps and self.caps.get("kokoro")):
+            self.setup = {"state": "no_voice", "job": None, "missing": []}; return
+        miss = engine.missing_languages(self.settings)
+        if not miss:
+            self.setup = {"state": "ready", "job": None, "missing": []}; return
+        self.setup = {"state": "needed", "job": None, "missing": miss}
+        if auto and self.settings.get("auto_setup", True):
+            self.run_setup()
+
+    def run_setup(self):
+        try:
+            jid = self.start_job(2, lambda log, step: (engine.ensure_languages(self.settings, log, step), self.refresh_caps())[1],
+                                 "getting your voices ready")
+        except RuntimeError:
+            return
+        self.setup = {"state": "installing", "job": jid, "missing": self.setup.get("missing", [])}
+        def watch():
+            while self.jobs[jid]["status"] == "running":
+                time.sleep(1)
+            j = self.jobs[jid]
+            self.setup = {"state": "ready" if j["status"] == "done" else "failed", "job": jid, "missing": [],
+                          "info": j.get("error_info")}
+        threading.Thread(target=watch, daemon=True).start()
 
     def refresh_caps(self):
         self.caps = engine.capabilities(self.settings)
@@ -127,6 +155,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"version": __version__, "caps": STATE.caps, "voices": voices.library(), "styles": engine.STYLES,
                                "donate_url": s.get("donate_url", ""), "donate_text": s.get("donate_text", ""),
                                "data_dir": str(config.data_dir())})
+        if p == "/api/setup": return self._json(STATE.setup)
         if p == "/api/project":
             f = STATE.project / "project.json"; data = {}
             if f.exists():
@@ -180,6 +209,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step))})
             if p == "/api/edit/render":
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
+            if p == "/api/setup/run":
+                S.run_setup(); return self._json(S.setup)
             if p == "/api/voice/install":
                 lang = str(body.get("lang", ""))
                 return self._json({"id": S.start_job(2, lambda log, step: (engine.install_lang(lang, S.settings, log, step, str(body.get("part", ""))), S.refresh_caps())[1],

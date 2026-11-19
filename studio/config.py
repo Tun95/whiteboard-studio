@@ -11,6 +11,7 @@ REPO = HERE.parent
 DEFAULT_SETTINGS = {
     "donate_url": "",
     "donate_text": "This app is free. If it saves you time, a small donation helps me keep improving it.",
+    "auto_setup": True,         # quietly add Japanese/Mandarin voice support on start if missing
     "kokoro_python": "",        # path to a python.exe that has Kokoro installed; empty = this python
 }
 

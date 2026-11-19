@@ -70,7 +70,7 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
                    "“Build Tools”), tick “Desktop development with C++”, finish the install, restart this app, and click Install again. "
                    "It is a big download (several GB).")
     # 2) the voice or its model needs a download and there is no internet
-    if any(k in low for k in ("max retries", "connectionerror", "urlopen error", "getaddrinfo", "huggingface", "name resolution", "timed out")):
+    if any(k in low for k in ("max retries", "connectionerror", "urlopen error", "getaddrinfo", "huggingface", "name resolution", "nameresolution", "failed to resolve", "timed out")):
         return out("No internet connection",
                    "The voice needs to download a file the first time you use it, but the internet could not be reached.",
                    "Connect to the internet, then try again. After the first download it works offline.")

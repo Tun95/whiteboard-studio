@@ -50,3 +50,4 @@ Built from `whiteboard-animator` (MIT) + Kokoro voice. Owner: Akande Tunji.
 - [ ] 4. App ads: guided form (no ad.json, no zip packs)
 - [ ] 5. Editor redesign (DaVinci-style: media pool, preview, timeline with tracks)
 - [ ] 6. Plain-language wording pass over the other tabs
+- [x] 1e. Automatic voice setup: on start the app tests that Japanese and Mandarin really convert a word (`engine.language_ok`). If not, it installs/repairs them in the background (`State.check_setup`/`run_setup`, `/api/setup`) and shows a calm banner "Getting your voices ready (one time only)". Turn off with `"auto_setup": false` in settings.json. Offline -> friendly "No internet" card, retried at next start. Tested with fake misaki only; needs a real Windows run. Still to do: bundle the add-ons in the installer so even this step is unnecessary.

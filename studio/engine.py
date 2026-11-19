@@ -471,3 +471,36 @@ def clear_samples() -> int:
         for f in d.glob("*.wav"):
             f.unlink(missing_ok=True); n += 1
     return n
+
+
+# ----------------------------------------------------------------------------- automatic voice setup (so users never see install errors)
+_LANG_CHECK = {
+    "j": "from misaki import ja; ja.JAG2P()('\\u3053\\u3093\\u306b\\u3061\\u306f')",
+    "z": "from misaki import zh; zh.ZHG2P()('\\u4f60\\u597d')",
+}
+
+def language_ok(lang: str, settings: dict) -> bool:
+    """True only if this language really works (not just 'installed'): it converts a test word."""
+    try:
+        r = subprocess.run([_kokoro_python(settings), "-c", _LANG_CHECK[lang]], env=_env(), capture_output=True, timeout=180)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+def missing_languages(settings: dict) -> list[str]:
+    return [l for l in _LANG_CHECK if not language_ok(l, settings)]
+
+def ensure_languages(settings: dict, log, step=lambda: None) -> None:
+    """Installs/repairs Japanese and Mandarin support only where it is missing. Safe to run any time."""
+    todo = missing_languages(settings)
+    if not todo:
+        log("Everything is already set up."); step(); step(); return
+    for lang in todo:
+        log(f"Getting {friendly.LANG_NAMES[lang]} voices ready (one time only)...")
+        install_lang(lang, settings, log, lambda: None)
+        step()
+    still = missing_languages(settings)
+    if still:
+        raise JobError("Some voices could not be set up.", {"title": "Some voices could not be set up",
+            "what": "The extra voice add-ons did not finish installing: " + ", ".join(friendly.LANG_NAMES[l] for l in still) + ". The other voices still work.",
+            "fix": "Check your internet connection and restart the app; it will try again by itself.", "action": None, "details": "Missing: " + ", ".join(still)})

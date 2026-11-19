@@ -24,4 +24,21 @@ async function boot(){
     if(st && st.caps){ App.caps = st.caps; clearInterval(t); chips(); document.dispatchEvent(new Event("capsready")); }
   }, 1500);
 }
-boot().catch(e=>{ document.body.innerHTML = "<pre style='padding:24px'>The app could not start: "+esc(e.message)+"</pre>"; });
+// One-time voice setup runs by itself in the background; show calm progress, never a scary error.
+async function watchSetup(){
+  const box = $("#setupBanner"); let last = "";
+  const tick = async ()=>{
+    const st = await api("/api/setup").catch(()=>null); if(!st) return setTimeout(tick, 3000);
+    if(st.state === "checking" || st.state === "needed"){ box.classList.remove("hidden"); box.innerHTML = "<b>Checking your voices…</b> This only takes a moment."; return setTimeout(tick, 2000); }
+    if(st.state === "installing"){
+      let line = ""; try{ const j = await api("/api/job?id="+st.job); line = (j.log.filter(l=>!l.startsWith("$")).slice(-1)[0]||""); }catch(_){}
+      box.classList.remove("hidden"); box.innerHTML = "<b>Getting your voices ready (one time only).</b> Japanese and Mandarin voices are being added. You can keep working; this needs internet and may take a few minutes.<div class='note'>"+esc(line)+"</div>";
+      last = "installing"; return setTimeout(tick, 2000);
+    }
+    if(st.state === "failed"){ box.classList.remove("hidden"); box.innerHTML = problemHTML(st.info || {title:"Some voices could not be set up", what:"", fix:"Restart the app with internet on; it will try again."}); return; }
+    if(last === "installing"){ toast("Your voices are ready."); const s2 = await api("/api/state").catch(()=>null); if(s2 && s2.caps){ App.caps = s2.caps; chips(); } }
+    box.classList.add("hidden");
+  };
+  tick();
+}
+boot().then(watchSetup).catch(e=>{ document.body.innerHTML = "<pre style='padding:24px'>The app could not start: "+esc(e.message)+"</pre>"; });
