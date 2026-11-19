@@ -18,5 +18,11 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--run-animator":
         from whiteboard_animator.cli import main
         sys.exit(main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] in ("--run-manhwa", "--run-ad"):
+        import runpy
+        mod = "manhwa_panels" if sys.argv[1] == "--run-manhwa" else "app_ad"
+        sys.argv = [mod + ".py", *sys.argv[2:]]
+        runpy.run_module(mod, run_name="__main__")
+        sys.exit(0)
     from studio.server import serve
     serve(open_browser="--no-browser" not in sys.argv)

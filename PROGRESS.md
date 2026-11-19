@@ -17,6 +17,16 @@ Built from `whiteboard-animator` (MIT) + Kokoro voice. Owner: Akande Tunji.
 - [x] Voice render end to end with a FAKE Kokoro (tests/stubs): audio + video in the MP4.
 - [x] Packaged-app hook: `run_studio.py --run-animator` (a frozen .exe cannot use `python -m`).
 
+## Phase 2 (done, tested here with fake Kokoro)
+- [x] Sidebar app with tabs: Home, Whiteboard video, Voices, App ads, Manhwa recap, Editor, Library; Donate button last in the sidebar.
+- [x] Voices tab: 54 Kokoro voices, search/filter, Listen (cached samples), set default voice; Listen button next to every voice choice.
+- [x] Editor: clips timeline, trim (set start/end from preview), speed, join, titles/captions, music/voice tracks, fades, size, export (ffmpeg).
+- [x] Manhwa tab (wraps manhwa_panels.py) and App ads tab (import ad pack .zip, make voice from pack script, preview, vertical, single scene).
+- [ ] Voice ids are from memory of Kokoro v1.0: if a Listen fails for a voice, the id may not exist in the user's version.
+- [ ] Non-English voices may need extra Kokoro language packages.
+- [ ] App ads: guided builder (no hand-editing ad.json) is the next big feature.
+- [ ] Donate link still needed from the user (settings.json donate_url).
+
 ## Not done / not tested
 - [ ] Real Kokoro voice from the app (test on the user's PC).
 - [ ] Windows build: `.github/workflows/build-windows.yml` + `packaging/installer.iss` are written but never run.
@@ -28,3 +38,4 @@ Built from `whiteboard-animator` (MIT) + Kokoro voice. Owner: Akande Tunji.
 ## Run it (dev)
     python run_studio.py                       # opens the browser
     set PYTHONPATH=whiteboard-animator         # Windows, if the animator is not pip-installed
+- [x] Backend: voice library/samples, manhwa runner, ad-pack runner, editor (ffmpeg) tested. UI tabs: in progress

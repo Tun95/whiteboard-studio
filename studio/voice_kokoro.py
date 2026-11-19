@@ -17,6 +17,7 @@ MODES = {   # speed, pause between sentences, pause between paragraphs, "!" boos
     "calm":      dict(speed=0.92, sent=0.45, para=1.10, bang=0.00, ask=0.00),
     "normal":    dict(speed=1.00, sent=0.30, para=0.80, bang=0.03, ask=0.00),
     "energetic": dict(speed=1.10, sent=0.14, para=0.50, bang=0.08, ask=0.03),
+    "hype":      dict(speed=1.20, sent=0.08, para=0.40, bang=0.10, ask=0.05),
 }
 
 def split_sentences(t):
@@ -57,6 +58,8 @@ def main():
     ap.add_argument("--lang", default=None, help="a US English, b UK English, e Spanish, f French, h Hindi, i Italian, j Japanese, p Portuguese(BR), z Mandarin")
     ap.add_argument("--mode", default="normal", choices=MODES)
     ap.add_argument("--speed", type=float, default=None)
+    ap.add_argument("--split", action="store_true", help="one file per paragraph: PREFIX-01.wav, PREFIX-02.wav ... (for ads and manhwa)")
+    ap.add_argument("--prefix", default="scene")
     ap.add_argument("--fresh", action="store_true", help="ignore saved progress and start again")
     a = ap.parse_args()
 
@@ -94,6 +97,17 @@ def main():
         el = time.time() - t0
         print(f"[{i}/{total}] {done_s/60:.1f} min of audio made, {el/60:.1f} min elapsed", flush=True)
 
+    if a.split:
+        n = 0
+        for kind, p in paths:
+            if kind != "speak": continue
+            n += 1
+            d, _ = sf.read(p, dtype="float32")
+            pk = float(np.max(np.abs(d))) if len(d) else 1.0
+            sf.write(os.path.join(a.out, f"{a.prefix}-{n:02d}.wav"), d * (0.89 / (pk or 1.0)), SR)
+        print(f"Saved {n} files: {a.prefix}-01.wav ...")
+        shutil.rmtree(work, ignore_errors=True)
+        return
     # pass 1: find the loudest point so the whole file is levelled to about -1 dB
     peak = 0.0
     for _, p in paths:
