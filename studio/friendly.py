@@ -107,6 +107,11 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
         return out("The computer ran out of memory",
                    f"There was not enough memory to finish {doing}.",
                    "Close other programs, choose a smaller video size or lower quality, or use fewer scenes at once, then try again.")
+    # 7b) FFmpeg does not know an option (different FFmpeg version)
+    if "unrecognized option" in low or "option not found" in low:
+        return out("Your FFmpeg is a different version than expected",
+                   "The video tool (FFmpeg) on this computer did not understand one of the instructions the app gave it.",
+                   "Update the app (or FFmpeg) to the newest version and try again. If it still fails, copy the details below and send them to the developer.")
     # 8) fallback: still friendly, with the technical text one click away
     return out("Something went wrong",
                f"The app stopped while {doing}, and it could not tell exactly why.",
