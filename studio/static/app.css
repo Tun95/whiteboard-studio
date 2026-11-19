@@ -99,4 +99,5 @@ button.del{border-color:transparent;background:transparent;color:var(--bad);padd
 button.del:hover{background:#c0392b22;border-color:var(--bad)}
 .libitem .top{display:flex;gap:6px;align-items:center}.libitem .top b{flex:1}
 
-.setup{background:#eef8fb;border:1px solid #b9e0ea;border-radius:12px;padding:12px 16px;margin:0 0 14px}
+.setup{background:var(--soft);border:1px solid var(--brand);color:var(--ink);border-radius:12px;padding:12px 16px;margin:0 0 14px}
+.setup .note{color:var(--muted)}
