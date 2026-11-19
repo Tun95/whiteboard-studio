@@ -337,8 +337,17 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
         dur = (end - start) / speed; total += dur
         inputs += ["-i", str(src)]
         if info["has_video"] and info["height"]:
+            if c.get("fit") == "fill":   # fill the screen: scale up until it covers, optional zoom, then crop (position = how far across/down)
+                z = min(3.0, max(1.0, float(c.get("zoom") or 1)))
+                px = min(1.0, max(0.0, float(c.get("px") if c.get("px") is not None else 0.5)))
+                py = min(1.0, max(0.0, float(c.get("py") if c.get("py") is not None else 0.5)))
+                sc = f"max({W}/iw,{H}/ih)*{z}"
+                fitf = (f"scale=w='ceil(iw*{sc}/2)*2':h='ceil(ih*{sc}/2)*2',"
+                        f"crop={W}:{H}:'(iw-{W})*{px}':'(ih-{H})*{py}'")
+            else:
+                fitf = f"scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black"
             v = (f"[{i}:v]trim=start={start}:end={end},setpts=(PTS-STARTPTS)/{speed},"
-                 f"scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={fps},format=yuv420p[v{i}]")
+                 f"{fitf},setsar=1,fps={fps},format=yuv420p[v{i}]")
         else:  # a still image or audio-only: show a black frame
             v = f"color=c=black:s={W}x{H}:r={fps}:d={dur},format=yuv420p[v{i}]"
         if info["has_audio"]:

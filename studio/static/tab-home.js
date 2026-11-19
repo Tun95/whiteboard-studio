@@ -15,5 +15,5 @@ registerPage("home", {title:"Home", sub:"Pick what you want to make.", icon:"hom
 }, async onShow(){
   const lib = await api("/api/library").catch(()=>null); if(!lib) return;
   const box = $("#homeRecent .lib");
-  box.innerHTML = lib.videos.slice(0,6).map(v=>`<div class="libitem"><b>${esc(v.name)}</b><video controls preload="metadata" src="/files/out/${encodeURIComponent(v.name)}"></video></div>`).join("") || '<div class="note">Nothing yet. Make your first video!</div>';
+  box.innerHTML = lib.videos.slice(0,6).map(v=>`<div class="libitem"><b>${esc(v.name)}</b><video controls preload="metadata" src="/files/out/${encodeURIComponent(v.name)}#t=0.4"></video></div>`).join("") || '<div class="note">Nothing yet. Make your first video!</div>';
 }});

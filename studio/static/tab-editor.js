@@ -1,13 +1,16 @@
+const ED_SIZES = [["1920x1080","Wide 16:9 · Full HD (YouTube)"],["1280x720","Wide 16:9 · smaller file"],["1080x1920","Tall 9:16 · Reels / Shorts / TikTok"],["720x1280","Tall 9:16 · smaller file"],["1080x1080","Square 1:1 · Instagram post"]];
+const edSizeOpts = (short) => ED_SIZES.map(([v,l])=>`<option value="${v}">${short ? l.split(" · ")[0] + (l.includes("smaller") ? " (small)" : l.includes("Instagram") ? "" : " · " + v.replace("x","×")) : l}</option>`).join("");
 registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos. Everything you change plays in the preview straight away.", icon:"film", build(el){
   el.innerHTML = `
   <div class="ed" id="edRoot">
     <div class="ed-bar">
-      <div class="grp"><button id="edUndo" title="Undo the last change (Ctrl+Z)" type="button">↶ Undo</button><button id="edRedo" title="Redo (Ctrl+Y)" type="button">↷ Redo</button></div>
+      <div class="grp"><button id="edUndo" title="Undo the last change (Ctrl+Z)" type="button">↶</button><button id="edRedo" title="Redo (Ctrl+Y)" type="button">↷</button></div>
       <div class="grp"><button id="edCopy" title="Copy the selected items (Ctrl+C)" type="button">⧉ Copy</button><button id="edPaste" title="Paste at the red line (Ctrl+V)" type="button">📋 Paste</button></div>
       <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂ Cut</button><button id="edDelete" title="Remove the selected items (Delete key)" type="button">🗑 Remove</button></div>
       <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Text</button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼 Picture</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Music / voice</button></div>
+      <div class="grp"><label class="ed-shape" title="The shape of your finished video. The preview changes straight away.">📐 <select id="edShape">${edSizeOpts(true)}</select></label></div>
       <div class="grp"><button id="edZoomOut" title="Zoom the timeline out (-)" type="button">−</button><span class="zl">Zoom</span><button id="edZoomIn" title="Zoom the timeline in (+)" type="button">+</button><button id="edFit" title="Fit the whole video on screen" type="button">Fit</button></div>
-      <button class="primary expo" id="edExportBtn" type="button">⬇ Export video</button>
+      <button class="primary expo" id="edExportBtn" type="button">⬇ Export</button>
     </div>
     <div class="ed-top">
       <section class="ed-pool">
@@ -26,6 +29,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
           <button id="edPlay" class="primary" title="Play or pause (Space)" type="button">▶ Play</button>
           <button id="edStart" title="Go to the start" type="button">⏮</button><button id="edBack" title="Back 1 second (←)" type="button">−1s</button><button id="edFwd" title="Forward 1 second (→)" type="button">+1s</button>
           <span class="ed-time" id="edTime">0:00.0 / 0:00.0</span>
+          <span class="vz" title="Make the preview screen bigger or smaller (Ctrl + mouse wheel on the screen)"><button id="vzOut" type="button">−</button><span id="vzPct">Fit</span><button id="vzIn" type="button">+</button><button id="vzFit" type="button">Fit screen</button></span>
           <label class="ed-mute"><input type="checkbox" id="edMute"> Mute preview</label>
         </div>
       </section>
@@ -35,14 +39,14 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   </div>
   <dialog id="edExport" class="wide"><h3>Export your video</h3>
     <label style="margin-top:0">Name</label><input type="text" id="eName">
-    <label>Video shape</label><select id="eSize"><option value="1920x1080">Wide 1920x1080 (YouTube)</option><option value="1280x720">Wide 1280x720 (smaller file)</option><option value="1080x1920">Tall 1080x1920 (Shorts, Reels, TikTok)</option></select>
+    <label>Video shape (you can also change it above the editor, to see it while you edit)</label><select id="eSize">${edSizeOpts()}</select>
     <div class="two"><div><label>Fade in at the start (seconds)</label><input type="number" id="eFi" min="0" step="0.1"></div><div><label>Fade out at the end (seconds)</label><input type="number" id="eFo" min="0" step="0.1"></div></div>
     <div class="note" id="eTotal" style="margin-top:8px"></div><div class="warn hidden" id="eProblem"></div>
     <div id="eJob"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button id="eClose" type="button">Close</button><button class="primary" id="eMake" type="button">Export video</button></div></dialog>`;
 
   // ---------------------------------------------------------------- state
-  const st = ps("editor", {clips:[], texts:[], tracks:[], overlays:[], fade_in:0, fade_out:0, size:"1920x1080", name:"edited-video", zoom:80, selK:"", selI:0});
+  const st = ps("editor", {clips:[], texts:[], tracks:[], overlays:[], fade_in:0, fade_out:0, size:"1920x1080", name:"edited-video", zoom:80, view:1, selK:"", selI:0});
   let lib = {videos:[], uploads:[], audio:[]}, poolTab = "v";
   const job = new JobPanel($("#eJob",el));
   const fmt = n => (Math.round(n*10)/10).toString();
@@ -83,6 +87,16 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   P.layout = function(){ let s=0; this.starts = st.clips.map(c=>{ const a=s; s+=clipLen(c); return a; }); this.total = s; if(this.t>this.total) this.t = this.total; };
   P.clipAt = function(t){ const n = st.clips.length; if(!n) return -1; for(let i=n-1;i>=0;i--) if(t >= this.starts[i] - 1e-6) return i; return 0; };
   P.fade = function(t){ let f=1; if(st.fade_in>0) f=Math.min(f,t/st.fade_in); if(st.fade_out>0) f=Math.min(f,(this.total-t)/st.fade_out); return clamp(f,0,1); };
+  // How a clip sits on the screen: whole picture with bars ("fit") or filling the screen by cropping ("fill"), with zoom and position.
+  P.applyFit = function(v, c){
+    if(!v || !c) return;
+    const FW = parseFloat(frame.style.width) || frame.clientWidth, FH = parseFloat(frame.style.height) || frame.clientHeight, vw = v.videoWidth, vh = v.videoHeight;
+    const fill = c.fit === "fill", key = [fill, c.px, c.py, c.zoom, FW, FH, vw, vh].join("|"); if(v._fk === key) return; v._fk = key;
+    if(!fill || !vw || !vh){ Object.assign(v.style, {left:"0px", top:"0px", width:"100%", height:"100%", objectFit:"contain"}); v._geo = null; return; }
+    const z = clamp(c.zoom||1, 1, 3), s = Math.max(FW/vw, FH/vh) * z, sw = vw*s, sh = vh*s, px = c.px==null?0.5:c.px, py = c.py==null?0.5:c.py;
+    Object.assign(v.style, {width:sw+"px", height:sh+"px", left:(-(sw-FW)*px)+"px", top:(-(sh-FH)*py)+"px", objectFit:"fill"}); v._geo = {sw, sh, FW, FH};
+  };
+  vids.forEach(v=>v.addEventListener("loadedmetadata", ()=>{ v._fk = ""; const c = st.clips[P.cur]; if(c && vids[P.act] === v) P.applyFit(v, c); }));
   P.activate = function(i){
     const c = st.clips[i], url = clipUrl(c); let v = vids[this.act];
     if(v.dataset.url !== url){
@@ -99,6 +113,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(n){
       const i = this.clipAt(t); const c = st.clips[i]; let v = vids[this.act]; if(!c) return;
       if(i !== this.cur || v.dataset.url !== clipUrl(c)) v = this.activate(i);
+      this.applyFit(v, c);
       const local = clamp(c.start + (t - this.starts[i]) * (c.speed||1), c.start, Math.max(c.start, c.end - 0.02));
       v.playbackRate = c.speed || 1; v.muted = mute; v.volume = clamp((c.volume==null?1:c.volume) * f, 0, 1);
       if(play){ if(v.paused) v.play().catch(e=>{ if(e && e.name==="NotAllowedError" && this.playing){ this.pause(); toast("Your browser blocked the preview. Click ▶ Play once more.", true); } }); if(Math.abs(v.currentTime - local) > 0.35) v.currentTime = local; }
@@ -188,10 +203,39 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   }
   function fitFrame(){
     const r = stage.getBoundingClientRect(); if(r.width < 50 || r.height < 50) return;
-    const [W,H] = st.size.split("x").map(Number), k = Math.min((r.width-16)/W, (r.height-16)/H);
-    frame.style.width = Math.floor(W*k)+"px"; frame.style.height = Math.floor(H*k)+"px"; frame.style.setProperty("--fb", Math.floor(Math.min(W,H)*k)+"px"); P.textKey = "";
+    const [W,H] = st.size.split("x").map(Number), k = Math.min((r.width-16)/W, (r.height-16)/H) * (st.view||1);
+    frame.style.width = Math.floor(W*k)+"px"; frame.style.height = Math.floor(H*k)+"px"; vids.forEach(v=>{ v._fk = ""; }); if(P.cur >= 0 && st.clips[P.cur]) P.applyFit(vids[P.act], st.clips[P.cur]);
+    const pct = $("#vzPct",el); if(pct) pct.textContent = (st.view||1) === 1 ? "Fit" : Math.round((st.view||1)*100)+"%"; frame.style.setProperty("--fb", Math.floor(Math.min(W,H)*k)+"px"); P.textKey = "";
   }
   new ResizeObserver(fitFrame).observe(stage);
+
+  // ---------------------------------------------------------------- screen shape (changes the preview at once) and screen zoom
+  function setSize(v){
+    st.size = v; $$("#edShape,#eSize,select[data-p=size]",el).forEach(x=>{ x.value = v; });
+    fitFrame(); P.textKey = ""; P.ovKey = ""; P.sync(P.playing); saveProj(); sizeHint();
+  }
+  function sizeHint(){
+    const [W,H] = st.size.split("x").map(Number); if(H < W*0.9) return;            // only for tall / square screens
+    const wide = st.clips.filter(c=>c.fit !== "fill" && (!c.w || c.w > c.h*1.2)).length; if(!wide) return;
+    toast("This screen is tall, so wide clips show black bars. Select a clip and choose “Fill the screen”, or use the button in “Your video”.");
+  }
+  $("#edShape",el).value = st.size; $("#edShape",el).onchange = e=>setSize(e.target.value);
+  const VZ = [0.5,0.75,1,1.25,1.5,2,3,4];
+  function setView(v){ st.view = clamp(v,0.5,4); fitFrame(); saveProj(); }
+  $("#vzIn",el).onclick = ()=>setView(VZ.find(x=>x > (st.view||1)+0.01) || 4);
+  $("#vzOut",el).onclick = ()=>setView([...VZ].reverse().find(x=>x < (st.view||1)-0.01) || 0.5);
+  $("#vzFit",el).onclick = ()=>setView(1);
+  stage.addEventListener("wheel", e=>{ if(!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setView((st.view||1) * (e.deltaY < 0 ? 1.15 : 1/1.15)); }, {passive:false});
+  // drag the picture inside the screen (clips set to "Fill the screen")
+  frame.addEventListener("pointerdown", e=>{
+    if(e.button || e.target.closest(".ed-ov,.ed-text")) return;
+    const c = st.selK==="clip" ? st.clips[st.selI] : null, v = vids[P.act]; if(!c || c.fit !== "fill" || P.cur !== st.selI || !v._geo) return;
+    e.preventDefault(); if(P.playing) P.pause(); const g = v._geo, x0 = e.clientX, y0 = e.clientY, px0 = c.px==null?0.5:c.px, py0 = c.py==null?0.5:c.py; let moved = false;
+    const mv = ev=>{ if(!moved){ if(Math.hypot(ev.clientX-x0, ev.clientY-y0) < 3) return; moved = true; snap(); }
+      if(g.sw > g.FW + 1) c.px = r2(clamp(px0 - (ev.clientX-x0)/(g.sw-g.FW), 0, 1)); if(g.sh > g.FH + 1) c.py = r2(clamp(py0 - (ev.clientY-y0)/(g.sh-g.FH), 0, 1)); v._fk = ""; P.applyFit(v, c); };
+    const up = ()=>{ document.removeEventListener("pointermove",mv); document.removeEventListener("pointerup",up); if(moved){ renderInsp(); saveProj(); } };
+    document.addEventListener("pointermove",mv); document.addEventListener("pointerup",up);
+  });
 
   // ---------------------------------------------------------------- media pool
   async function loadLib(){ lib = await api("/api/library"); renderPool(); }
@@ -237,7 +281,8 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   // ---------------------------------------------------------------- adding things
   async function addClip(file, folder, at){
     try{ const inf = await info(file); snap();
-      const c = {file, folder, start:0, end:inf.duration||10, speed:1, volume:1, duration:inf.duration||0};
+      const [SW,SH] = st.size.split("x").map(Number), wideClip = inf.width && inf.height && inf.width > inf.height*1.2;
+      const c = {file, folder, start:0, end:inf.duration||10, speed:1, volume:1, duration:inf.duration||0, w:inf.width||0, h:inf.height||0, fit: (SH >= SW*0.9 && wideClip) ? "fill" : "fit", px:0.5, py:0.5, zoom:1};
       const idx = at==null ? st.clips.length : clamp(at,0,st.clips.length); st.clips.splice(idx,0,c); st.selK="clip"; st.selI=idx;
       layoutAll(); renderInsp(); saveProj();
       if(st.clips.length===1) P.seek(0);
@@ -443,8 +488,9 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     const row = (label, html)=>`<label>${label}</label>${html}`;
     if(!it){
       box.innerHTML = `<h2>Your video</h2><p class="note">Click a clip, text or sound on the timeline to change it here.</p>
-        ${row("Video shape",`<select data-p="size"><option value="1920x1080">Wide 1920x1080</option><option value="1280x720">Wide 1280x720</option><option value="1080x1920">Tall 1080x1920 (Shorts / Reels)</option></select>`)}
+        ${row("Video shape",`<select data-p="size">${edSizeOpts()}</select>`)}
         <div class="two"><div>${row("Fade in (s)",`<input type="number" data-p="fade_in" min="0" step="0.1" value="${st.fade_in}">`)}</div><div>${row("Fade out (s)",`<input type="number" data-p="fade_out" min="0" step="0.1" value="${st.fade_out}">`)}</div></div>
+        <div class="row" style="margin-top:8px"><button class="small" data-a="fillall" type="button" title="Crop every clip so it fills the screen (best for Reels, Shorts and TikTok)">Fill the screen: all clips</button><button class="small" data-a="fitall" type="button">Whole picture: all clips</button></div>
         <p class="note" style="margin-top:14px"><b>Shortcuts</b><br>Space: play / pause · S: cut here · Delete: remove<br>← →: step 0.1s (Shift: 1s) · Ctrl+Z: undo<br>Mouse wheel on the timeline: zoom · Shift + wheel: slide sideways<br>Ctrl + click: select several · Ctrl + A: select all<br>Ctrl + C / X / V: copy, cut, paste at the red line</p>`;
       $("select[data-p=size]",box).value = st.size; return;
     }
@@ -467,6 +513,11 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
       box.innerHTML = `<h2>Video clip</h2><b class="ellip" title="${esc(c.file)}">${esc(c.file)}</b><div class="note">Plays for ${fmt(clipLen(c))} s</div>
         <div class="two"><div>${row("Play from (s)",`<input type="number" data-f="start" min="0" step="0.1" value="${fmt(c.start)}">`)}</div><div>${row("Play until (s)",`<input type="number" data-f="end" min="0" step="0.1" value="${fmt(c.end)}">`)}</div></div>
         <div class="row"><button class="small" data-a="setstart" ${here?'':'disabled'} type="button" title="Cut off everything before the playhead">Start at playhead</button><button class="small" data-a="setend" ${here?'':'disabled'} type="button" title="Cut off everything after the playhead">End at playhead</button></div>
+        ${row("On the screen",`<select data-f="fit"><option value="fit" ${c.fit!=='fill'?'selected':''}>Show the whole picture (black bars if the shape differs)</option><option value="fill" ${c.fit==='fill'?'selected':''}>Fill the screen (crops the edges)</option></select>`)}
+        ${c.fit==='fill' ? `${row(`Zoom in: <b id="vz1">${Math.round((c.zoom||1)*100)}%</b>`,`<input type="range" data-f="zoom" min="1" max="3" step="0.05" value="${c.zoom||1}">`)}
+          ${row("Move picture left / right",`<input type="range" data-f="px" min="0" max="1" step="0.01" value="${c.px==null?0.5:c.px}">`)}
+          ${row("Move picture up / down",`<input type="range" data-f="py" min="0" max="1" step="0.01" value="${c.py==null?0.5:c.py}">`)}
+          <p class="note" style="margin:2px 0 0">Tip: drag the picture on the preview to choose which part to keep.</p>` : ''}
         ${row("Speed",`<select data-f="speed">${[0.5,0.75,1,1.25,1.5,2,3].map(s=>`<option ${s==(c.speed||1)?'selected':''}>${s}</option>`).join("")}</select>`)}
         ${row(`Sound of this clip: <b id="vl">${Math.round((c.volume==null?1:c.volume)*100)}%</b>`,`<input type="range" data-f="volume" min="0" max="1.5" step="0.05" value="${c.volume==null?1:c.volume}">`)}
         <div class="row" style="margin-top:12px"><button class="small" data-a="left" ${st.selI==0?'disabled':''} type="button">← Move earlier</button><button class="small" data-a="right" ${st.selI==st.clips.length-1?'disabled':''} type="button">Move later →</button><button class="small ghost" data-a="del" type="button">Remove</button></div>`;
@@ -494,16 +545,19 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   insp.addEventListener("focusout", ()=>{ insp._snapped = false; });
   function field(e){
     const f = e.target.dataset.f, p = e.target.dataset.p; if(!f && !p) return;
-    if(p){ st[p] = e.target.type==="number" ? Math.max(0,parseFloat(e.target.value)||0) : e.target.value; if(p==="size") fitFrame(); layoutAll(true); saveProj(); return; }
+    if(p==="size"){ setSize(e.target.value); return; }
+    if(p){ st[p] = e.target.type==="number" ? Math.max(0,parseFloat(e.target.value)||0) : e.target.value; layoutAll(true); saveProj(); return; }
     const it = selItem(); if(!it) return; let v = e.target.value;
-    if(["start","end","volume"].includes(f) || (f==="speed")) v = parseFloat(v); if(Number.isNaN(v)) v = 0;
+    if(["start","end","volume","px","py","zoom"].includes(f) || (f==="speed")) v = parseFloat(v); if(Number.isNaN(v)) v = 0;
     if(st.selK==="clip"){ it[f] = f==="speed" ? (v||1) : v; if(f==="start") it.start = Math.max(0, Math.min(it.start, it.end-0.1)); if(f==="end"){ it.end = Math.max(it.start+0.1, it.duration ? Math.min(it.end, it.duration) : it.end); } }
     else if(st.selK==="ov"){ if(f==="wpct"){ it.w = clamp(v/100, 0.03, 1.5); const vw=$("#vw",insp); if(vw) vw.textContent = Math.round(v)+"%"; } else { it[f] = v; const vo=$("#vo",insp); if(f==="opacity" && vo) vo.textContent = Math.round(v*100)+"%"; } }
     else if(st.selK==="text"){ if(f==="position"){ if(v==="custom") return; delete it.x; delete it.y; } it[f] = v; }
     else { it[f] = v; if(f==="file"){ infoCache[v] ? it.duration = infoCache[v].duration : info(v).then(i=>{ it.duration = i.duration; layoutAll(true); }).catch(()=>{}); } }
+    if(f==="zoom"){ const z=$("#vz1",insp); if(z) z.textContent = Math.round(v*100)+"%"; }
+    if(st.selK==="clip" && ["fit","px","py","zoom"].includes(f)){ vids.forEach(x=>{ x._fk = ""; }); }
     if(f==="volume"){ const vl=$("#vl",insp); if(vl) vl.textContent = Math.round(v*100)+"%"; }
     P.textKey = ""; layoutAll(true); saveProj();
-    if(e.type==="change" && ["kind","speed","style","position"].includes(f)) renderInsp();
+    if(e.type==="change" && ["kind","speed","style","position","fit"].includes(f)) renderInsp();
   }
   insp.addEventListener("input", e=>{ if(e.target.matches("textarea,input[type=range]")) field(e); });
   insp.addEventListener("change", field);
@@ -511,6 +565,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     const b = e.target.closest("button[data-a]"); if(!b) return; const a = b.dataset.a;
     if(a==="delall"){ removeSel(); return; }
     if(a==="desel"){ select(null); return; }
+    if(a==="fillall" || a==="fitall"){ snap(); st.clips.forEach(c=>{ c.fit = a==="fillall" ? "fill" : "fit"; }); vids.forEach(v=>{ v._fk = ""; }); P.sync(P.playing); renderInsp(); saveProj(); toast(a==="fillall" ? "All clips now fill the screen." : "All clips now show the whole picture."); return; }
     const it = selItem(); snap();
     if(a==="watermark"){ Object.assign(it, {w:0.16, opacity:0.7, start:0, end:0}); const [W,H] = st.size.split("x").map(Number); it.x = r2(1 - 0.04 - it.w/2); it.y = r2(1 - 0.04 - (it.w*W*(it.ar||0.5))/H/2); }
     if(a==="place"){ const c = b.dataset.c, m = 0.03 + it.w/2; const [W,H] = st.size.split("x").map(Number); const mh = 0.03 + (it.w*W*(it.ar||0.5))/H/2;
@@ -561,7 +616,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
 
   // ---------------------------------------------------------------- export dialog
   const dlg = $("#edExport",el);
-  [["fade_in","#eFi"],["fade_out","#eFo"],["size","#eSize"],["name","#eName"]].forEach(([k,s])=>{ const e=$(s,el); e.value=st[k]; e.oninput=e.onchange=()=>{ st[k] = e.type==="number" ? Math.max(0,parseFloat(e.value)||0) : e.value; if(k==="size") fitFrame(); P.sync(P.playing); saveProj(); }; });
+  [["fade_in","#eFi"],["fade_out","#eFo"],["size","#eSize"],["name","#eName"]].forEach(([k,s])=>{ const e=$(s,el); e.value=st[k]; e.oninput=e.onchange=()=>{ st[k] = e.type==="number" ? Math.max(0,parseFloat(e.value)||0) : e.value; if(k==="size"){ setSize(e.value); return; } P.sync(P.playing); saveProj(); }; });
   $("#edExportBtn",el).onclick = ()=>{ P.pause(); ["fade_in","fade_out","size","name"].forEach(k=>{}); $("#eFi",el).value=st.fade_in; $("#eFo",el).value=st.fade_out; $("#eSize",el).value=st.size; $("#eName",el).value=st.name; check(); dlg.showModal(); };
   $("#eClose",el).onclick = ()=>dlg.close();
   function check(){
@@ -571,7 +626,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   }
   $("#eMake",el).onclick = async ()=>{
     const b = $("#eMake",el); b.dataset.busy = "1"; b.disabled = true;
-    const out = await job.run("/api/edit/render", {clips:st.clips.map(c=>({file:c.file,start:c.start,end:c.end,speed:c.speed,volume:c.volume==null?1:c.volume})), texts:st.texts, tracks:st.tracks, overlays:st.overlays,
+    const out = await job.run("/api/edit/render", {clips:st.clips.map(c=>({file:c.file,start:c.start,end:c.end,speed:c.speed,volume:c.volume==null?1:c.volume,fit:c.fit,px:c.px,py:c.py,zoom:c.zoom})), texts:st.texts, tracks:st.tracks, overlays:st.overlays,
       fade_in:st.fade_in, fade_out:st.fade_out, size:st.size, name:st.name});
     b.dataset.busy = "0"; check(); if(out) loadLib();
   };
