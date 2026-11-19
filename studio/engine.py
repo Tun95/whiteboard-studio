@@ -399,31 +399,47 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
 
 
 # ----------------------------------------------------------------------------- language add-ons
+_CLEAN_UNIDIC = (
+    "import os, shutil, sys\n"
+    "for p in sys.path:\n"
+    "    d = os.path.join(p, 'unidic')\n"
+    "    if os.path.isdir(d) and not os.path.isfile(os.path.join(d, '__init__.py')):\n"
+    "        shutil.rmtree(d, ignore_errors=True); print('removed leftover folder', d)\n")
+
+def _use_small_japanese_dictionary(py: str, pip: list[str], log) -> None:
+    """fugashi tries the full 'unidic' first and only falls back to 'unidic-lite' if it is not installed at all."""
+    _run([*pip, "unidic-lite"], log, what="step")
+    log("Removing the incomplete full dictionary (if present)...")
+    try:
+        _run([py, "-m", "pip", "uninstall", "-y", "unidic"], log, what="step")
+    except JobError:
+        pass   # it was simply not installed
+    _run([py, "-c", _CLEAN_UNIDIC], log, what="step")
+
 def install_lang(lang: str, settings: dict, log, step=lambda: None, part: str = "") -> None:
     """Installs the extra Kokoro add-on for a language (Japanese, Mandarin) into the Kokoro python."""
     if lang not in friendly.LANG_NAMES or (lang not in friendly.LANG_PACKAGES and lang != "j"):
         raise JobError("That language does not need an add-on.")
     py = _kokoro_python(settings)
     pip = [py, "-m", "pip", "install", "--upgrade"]
-    if lang == "j" and part == "dict":
-        log("Downloading the Japanese dictionary (a large download, please keep this window open)...")
-        _run([py, "-m", "unidic", "download"], log, what="step")
+    if lang == "j" and part == "lite":
+        log("Installing the small Japanese dictionary (about 47 MB)...")
+        _use_small_japanese_dictionary(py, pip, log)
         step(); step()
         log("Done. You can listen to the voice again now.")
         return
     log(f"Installing {friendly.LANG_NAMES[lang]} support. This needs internet and can take a few minutes...")
     if lang == "j":
         try:   # no compiler needed: ready-made Windows files
-            log("Step 1 of 3: the Japanese speech engine (ready-made version)...")
+            log("Step 1 of 2: the Japanese speech engine (ready-made version)...")
             _run([*pip, *friendly.JA_PREBUILT], log, what="step")
-            log("Step 2 of 3: the other Japanese add-ons...")
             _run([*pip, *friendly.JA_REST], log, what="step")
         except JobError:
             log("The ready-made version could not be used. Trying the standard version (needs a C++ build tool)...")
             _run([*pip, *friendly.JA_COMPILED], log, what="step")
         step()
-        log("Step 3 of 3: the Japanese dictionary (a large download, please wait)...")
-        _run([py, "-m", "unidic", "download"], log, what="step")
+        log("Step 2 of 2: the small Japanese dictionary...")
+        _use_small_japanese_dictionary(py, pip, log)
     else:
         _run([*pip, *friendly.LANG_PACKAGES[lang]], log, what="step")
         step()

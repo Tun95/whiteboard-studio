@@ -18,7 +18,10 @@ LANG_PACKAGES = {"z": ["misaki[zh]"]}
 # compile it and fails on PCs without a C++ compiler. "lemon-pyopenjtalk-prebuilt" is a third-party build of the same
 # module with ready-made Windows wheels, so we install that first and the other add-ons without the [ja] shortcut.
 JA_PREBUILT = ["lemon-pyopenjtalk-prebuilt"]
-JA_REST = ["misaki", "fugashi", "jaconv", "mojimoji", "unidic"]
+# The full "unidic" dictionary is a 526 MB download (very slow on some connections). The small "unidic-lite" (about 47 MB,
+# from PyPI) works with misaki and loads automatically ONLY if the full "unidic" package is not installed (fugashi tries
+# unidic first), so the install removes unidic.
+JA_REST = ["misaki", "fugashi", "jaconv", "mojimoji", "unidic-lite"]
 JA_COMPILED = ["misaki[ja]"]   # fallback: needs a C++ compiler
 LANG_MODULES = {
     "j": ("pyopenjtalk", "fugashi", "unidic", "jaconv", "mojimoji", "cutlet", "mecab"),
@@ -40,14 +43,13 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
     def out(title, what_, fix, action=None):
         return {"title": title, "what": what_, "fix": fix, "action": action, "details": details}
 
-    # 0) Japanese add-on is installed but its dictionary was never downloaded (real error seen on Windows)
+    # 0) Japanese add-on is installed but its dictionary is missing (real error seen on Windows)
     if "failed initializing mecab" in low or "mecabrc" in low or ("unidic" in low and "dicdir" in low):
-        return out("The Japanese dictionary is not downloaded yet",
-                   "The Japanese add-on is installed, but it still needs its dictionary file. That is a separate, large download "
-                   "that has not finished or was never started.",
-                   "Click “Download the Japanese dictionary” and keep this window open until it says it is done (it can take several minutes). "
-                   "Then listen to the voice again.",
-                   {"type": "install_lang", "lang": "j", "part": "dict", "label": "Download the Japanese dictionary"})
+        return out("The Japanese dictionary is missing",
+                   "The Japanese add-on is installed, but the dictionary file it needs is missing. The full dictionary is a very large "
+                   "download (526 MB). A smaller dictionary (about 47 MB) works too.",
+                   "Click “Install the small Japanese dictionary”. It takes a minute or two. Then listen to the voice again.",
+                   {"type": "install_lang", "lang": "j", "part": "lite", "label": "Install the small Japanese dictionary"})
     # 1) a language add-on is missing (Japanese, Mandarin)
     m = re.search(r"no module named ['\"]?([\w\.\-]+)", low)
     missing = m.group(1).split(".")[0] if m else ""
