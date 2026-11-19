@@ -397,8 +397,12 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
         (work / f"t{j}.txt").write_text(wrap_caption(t["text"], W, size), encoding="utf-8")
         s0 = float(t.get("start") or 0); e0 = float(t.get("end") or 0) or total
         pos = {"top": f"y=h*0.08+{pad}", "center": "y=(h-text_h)/2", "bottom": f"y=h*0.92-text_h-{pad}"}.get(t.get("position", "bottom"), f"y=h*0.92-text_h-{pad}")
+        xexpr = "x=(w-text_w)/2"
+        if t.get("x") is not None and t.get("y") is not None:   # the person dragged the words somewhere
+            tx = min(0.98, max(0.02, float(t["x"]))); ty = min(0.98, max(0.02, float(t["y"])))
+            xexpr = f"x=w*{tx}-text_w/2"; pos = f"y=h*{ty}-text_h/2"
         box = f":borderw={pad}:bordercolor=black@0.85" if is_title else f":box=1:boxcolor=black@0.55:boxborderw={pad}"
-        fparts.append(f"[{vlabel}]drawtext=fontfile=font.otf:textfile=t{j}.txt:fontcolor=white:fontsize={size}:x=(w-text_w)/2:{pos}{box}:"
+        fparts.append(f"[{vlabel}]drawtext=fontfile=font.otf:textfile=t{j}.txt:fontcolor=white:fontsize={size}:{xexpr}:{pos}{box}:"
                       f"enable='between(t,{s0},{e0})'[vt{j}]")
         vlabel = f"vt{j}"
     fi = float(spec.get("fade_in") or 0); fo = float(spec.get("fade_out") or 0)

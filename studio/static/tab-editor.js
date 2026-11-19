@@ -80,7 +80,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   const frame = $("#edFrame",el), stage = $("#edStage",el), vids = [$("#edV0",el), $("#edV1",el)];
   const P = { t:0, playing:false, w0:0, t0:0, raf:0, starts:[], total:0, cur:-1, act:0, auds:[], textKey:"" };
   P.layout = function(){ let s=0; this.starts = st.clips.map(c=>{ const a=s; s+=clipLen(c); return a; }); this.total = s; if(this.t>this.total) this.t = this.total; };
-  P.clipAt = function(t){ for(let i=st.clips.length-1;i>=0;i--) if(t>=this.starts[i]-1e-6) return t<this.starts[i]+clipLen(st.clips[i])-1e-6 || i===st.clips.length-1 ? i : -1; return -1; };
+  P.clipAt = function(t){ const n = st.clips.length; if(!n) return -1; for(let i=n-1;i>=0;i--) if(t >= this.starts[i] - 1e-6) return i; return 0; };
   P.fade = function(t){ let f=1; if(st.fade_in>0) f=Math.min(f,t/st.fade_in); if(st.fade_out>0) f=Math.min(f,(this.total-t)/st.fade_out); return clamp(f,0,1); };
   P.activate = function(i){
     const c = st.clips[i], url = clipUrl(c); let v = vids[this.act];
@@ -96,7 +96,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     const t = this.t, n = st.clips.length, mute = $("#edMute",el).checked, f = this.fade(t);
     $("#edEmpty",el).classList.toggle("hidden", n>0);
     if(n){
-      const i = this.clipAt(t); const c = st.clips[i]; let v = vids[this.act];
+      const i = this.clipAt(t); const c = st.clips[i]; let v = vids[this.act]; if(!c) return;
       if(i !== this.cur || v.dataset.url !== clipUrl(c)) v = this.activate(i);
       const local = clamp(c.start + (t - this.starts[i]) * (c.speed||1), c.start, Math.max(c.start, c.end - 0.02));
       v.playbackRate = c.speed || 1; v.muted = mute; v.volume = clamp((c.volume==null?1:c.volume) * f, 0, 1);
@@ -121,10 +121,11 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     while(this.auds.length > st.tracks.length){ this.auds.pop().el.pause(); }
     // text on screen
     const W = +st.size.split("x")[0], H = +st.size.split("x")[1], B = Math.min(W,H);
-    const act = st.texts.map((x,i)=>({x,i})).filter(({x})=> (x.text||"").trim() && t >= (x.start||0) - 1e-6 && t <= ((x.end||0) || this.total) + 1e-6);
-    const key = act.map(({x,i})=>i+"|"+x.text+"|"+x.style+"|"+x.position).join("¦") + "@" + st.size + (st.selK==="text"?st.selI:"");
+    const act = st.texts.map((x,i)=>({x,i,on: t >= (x.start||0) - 1e-6 && t <= ((x.end||0) || this.total) + 1e-6})).filter(({x,i,on})=> (x.text||"").trim() && (on || inSel("text",i)));
+    const key = act.map(({x,i,on})=>i+"|"+x.text+"|"+x.style+"|"+x.position+"|"+x.x+"|"+x.y+"|"+on).join("¦") + "@" + st.size + (st.selK==="text"?st.selI:"") + M.size;
     if(key !== this.textKey){ this.textKey = key;
-      $("#edTexts",el).innerHTML = act.map(({x,i})=>`<div class="ed-text ${x.style==='title'?'title':'cap'} ${esc(x.position||'bottom')} ${st.selK==='text'&&st.selI===i?'sel':''}">${esc(wrapCaption(x.text, W, Math.floor(B*(x.style==='title'?0.075:0.05))))}</div>`).join(""); }
+      $("#edTexts",el).innerHTML = act.map(({x,i,on})=>{ const free = x.x!=null && x.y!=null;
+        return `<div class="ed-text ${x.style==='title'?'title':'cap'} ${free?'free':esc(x.position||'bottom')} ${on?'':'ghost'} ${inSel('text',i)?'sel':''}" data-i="${i}" ${free?`style="left:${x.x*100}%;top:${x.y*100}%"`:''}>${esc(wrapCaption(x.text, W, Math.floor(B*(x.style==='title'?0.075:0.05))))}</div>`; }).join(""); }
     $("#edFade",el).style.opacity = String(1 - f);
     this.over(t);
     this.paint();
@@ -148,22 +149,29 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   P.play = function(){
     if(!st.clips.length){ toast("Add a video clip first.", true); return; }
     if(this.t >= this.total - 0.05) this.t = 0;
-    this.playing = true; this.w0 = performance.now(); this.t0 = this.t; this.stall = 0; $("#edPlay",el).textContent = "❚❚ Pause";
-    this.sync(true);   // start the picture and sound right now, while the click still counts (browsers block it otherwise)
+    this.playing = true; this.w0 = performance.now(); this.t0 = this.t; this.hold = performance.now(); $("#edPlay",el).textContent = "❚❚ Pause";
+    try{ this.sync(true); }catch(err){ console.error(err); }   // start picture and sound right now, while the click still counts (browsers block it otherwise)
     cancelAnimationFrame(this.raf); const tick = now=>{
       if(!this.playing) return;
       if(!isShown()){ this.pause(); return; }
       const cv = vids[this.act];
-      if(st.clips.length && (cv.readyState < 3 || cv.seeking)){   // the video is still loading: hold the clock so the start is never skipped
-        if(!this.stall) this.stall = now;
-        if(now - this.stall < 10000){ this.t0 = this.t; this.w0 = now; this.sync(true); this.raf = requestAnimationFrame(tick); return; }
-      } else this.stall = 0;
-      this.t = this.t0 + (now - this.w0)/1000;
+      if(this.hold){   // only at the very start: wait (up to 6 s) for the first picture so the beginning is never skipped
+        if((cv.readyState < 3 || cv.seeking) && performance.now() - this.hold < 6000){
+          this.t0 = this.t; this.w0 = now; this.auds.forEach(a=>{ if(!a.el.paused) a.el.pause(); }); if(cv.paused) cv.play().catch(()=>{});
+          this.raf = requestAnimationFrame(tick); return; }
+        this.hold = 0; this.w0 = now; this.t0 = this.t;
+      }
+      this.t = Math.max(0, this.t0 + (now - this.w0)/1000);
       if(this.t >= this.total){ this.t = this.total; this.pause(); return; }
-      this.sync(true); this.raf = requestAnimationFrame(tick); };
+      try{ this.sync(true); }catch(err){ console.error(err); }   // one hiccup must never freeze the playhead
+      this.raf = requestAnimationFrame(tick); };
     this.raf = requestAnimationFrame(tick);
   };
-  P.pause = function(){ this.playing = false; cancelAnimationFrame(this.raf); $("#edPlay",el).textContent = "▶ Play"; this.sync(false); };
+  P.pause = function(){
+    this.playing = false; this.hold = 0; cancelAnimationFrame(this.raf); $("#edPlay",el).textContent = "▶ Play";
+    vids.forEach(v=>{ try{ v.pause(); }catch(_){} }); this.auds.forEach(a=>{ try{ a.el.pause(); }catch(_){} });   // stop every sound first, whatever happens next
+    try{ this.sync(false); }catch(err){ console.error(err); }
+  };
   $("#edPlay",el).onclick = ()=> P.playing ? P.pause() : P.play();
   $("#edStart",el).onclick = ()=>P.seek(0);
   $("#edBack",el).onclick = ()=>P.seek(P.t-1);
@@ -368,6 +376,23 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     document.addEventListener("pointermove",mv); document.addEventListener("pointerup",up);
   });
   const r2 = n => Math.round(n*1000)/1000;
+  $("#edTexts",el).addEventListener("pointerdown", e=>{
+    const d = e.target.closest(".ed-text"); if(!d || e.button) return; e.preventDefault();
+    const i = +d.dataset.i, x = st.texts[i]; if(!x) return;
+    if(e.ctrlKey || e.metaKey){ select("text", i, true); return; }
+    if(!inSel("text",i) || M.size>1) select("text", i);
+    if(P.playing) P.pause();
+    const rect = frame.getBoundingClientRect(), dr = d.getBoundingClientRect(), startC = {x:(dr.left+dr.width/2-rect.left)/rect.width, y:(dr.top+dr.height/2-rect.top)/rect.height}, px0 = e.clientX, py0 = e.clientY;
+    let moved = false;
+    const mv = ev=>{
+      if(!moved && Math.hypot(ev.clientX-px0, ev.clientY-py0) < 3) return; if(!moved){ moved = true; snap(); }
+      let nx = startC.x + (ev.clientX-px0)/rect.width, ny = startC.y + (ev.clientY-py0)/rect.height;
+      if(Math.abs(nx-0.5) < 0.015) nx = 0.5; if(Math.abs(ny-0.5) < 0.015) ny = 0.5;
+      x.x = r2(clamp(nx, 0.02, 0.98)); x.y = r2(clamp(ny, 0.02, 0.98)); P.textKey = ""; P.sync(false);
+    };
+    const up = ()=>{ document.removeEventListener("pointermove",mv); document.removeEventListener("pointerup",up); if(moved){ renderInsp(); saveProj(); } };
+    document.addEventListener("pointermove",mv); document.addEventListener("pointerup",up);
+  });
   // drag from the media pool onto the timeline
   const tlIn = $("#tlInner",el);
   $("#edPool",el).addEventListener("dragstart", e=>{ const it = e.target.closest(".pool-item"); if(!it) return; e.dataTransfer.setData("text/plain", JSON.stringify({kind:it.dataset.kind, name:it.dataset.name, folder:it.dataset.folder||""})); });
@@ -421,7 +446,8 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
       box.innerHTML = `<h2>Text on screen</h2>${row("What it says",`<textarea data-f="text" rows="3" placeholder="Type here">${esc(x.text||"")}</textarea>`)}
         <p class="note" style="margin:4px 0 0">Long text is split into lines automatically. Press Enter to start a new line yourself.</p>
         ${row("Look",`<select data-f="style"><option value="caption" ${x.style!=='title'?'selected':''}>Caption (dark box)</option><option value="title" ${x.style==='title'?'selected':''}>Big title</option></select>`)}
-        ${row("Where",`<select data-f="position">${[["top","Top"],["center","Middle"],["bottom","Bottom"]].map(([v,l])=>`<option value="${v}" ${v===(x.position||'bottom')?'selected':''}>${l}</option>`).join("")}</select>`)}
+        ${row("Where",`<select data-f="position">${x.x!=null&&x.y!=null?'<option value="custom" selected>Where you dragged it</option>':''}${[["top","Top"],["center","Middle"],["bottom","Bottom"]].map(([v,l])=>`<option value="${v}" ${x.x==null&&v===(x.position||'bottom')?'selected':''}>${l}</option>`).join("")}</select>`)}
+        <p class="note" style="margin:2px 0 0">Tip: drag the words on the preview to put them anywhere.</p>
         <div class="two"><div>${row("Shows from (s)",`<input type="number" data-f="start" min="0" step="0.1" value="${fmt(x.start||0)}">`)}</div><div>${row("Shows until (s)",`<input type="number" data-f="end" min="0" step="0.1" value="${fmt(x.end||0)}">`)}</div></div>
         <div class="row"><button class="small" data-a="tstart" type="button">From playhead</button><button class="small" data-a="tend" type="button">Until playhead</button><button class="small ghost" data-a="del" type="button">Remove</button></div>`;
     } else {
@@ -444,7 +470,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(["start","end","volume"].includes(f) || (f==="speed")) v = parseFloat(v); if(Number.isNaN(v)) v = 0;
     if(st.selK==="clip"){ it[f] = f==="speed" ? (v||1) : v; if(f==="start") it.start = Math.max(0, Math.min(it.start, it.end-0.1)); if(f==="end"){ it.end = Math.max(it.start+0.1, it.duration ? Math.min(it.end, it.duration) : it.end); } }
     else if(st.selK==="ov"){ if(f==="wpct"){ it.w = clamp(v/100, 0.03, 1.5); const vw=$("#vw",insp); if(vw) vw.textContent = Math.round(v)+"%"; } else { it[f] = v; const vo=$("#vo",insp); if(f==="opacity" && vo) vo.textContent = Math.round(v*100)+"%"; } }
-    else if(st.selK==="text"){ it[f] = v; }
+    else if(st.selK==="text"){ if(f==="position"){ if(v==="custom") return; delete it.x; delete it.y; } it[f] = v; }
     else { it[f] = v; if(f==="file"){ infoCache[v] ? it.duration = infoCache[v].duration : info(v).then(i=>{ it.duration = i.duration; layoutAll(true); }).catch(()=>{}); } }
     if(f==="volume"){ const vl=$("#vl",insp); if(vl) vl.textContent = Math.round(v*100)+"%"; }
     P.textKey = ""; layoutAll(true); saveProj();
