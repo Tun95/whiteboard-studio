@@ -401,19 +401,26 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
 # ----------------------------------------------------------------------------- language add-ons
 def install_lang(lang: str, settings: dict, log, step=lambda: None) -> None:
     """Installs the extra Kokoro add-on for a language (Japanese, Mandarin) into the Kokoro python."""
-    pk = friendly.LANG_PACKAGES.get(lang)
-    if not pk:
+    if lang not in friendly.LANG_NAMES or (lang not in friendly.LANG_PACKAGES and lang != "j"):
         raise JobError("That language does not need an add-on.")
     py = _kokoro_python(settings)
+    pip = [py, "-m", "pip", "install", "--upgrade"]
     log(f"Installing {friendly.LANG_NAMES[lang]} support. This needs internet and can take a few minutes...")
-    _run([py, "-m", "pip", "install", "--upgrade", *pk], log, what="step")
-    step()
-    if lang == "j":   # the Japanese dictionary is a separate download (harmless if it is not needed)
-        log("Downloading the Japanese dictionary...")
-        try:
-            _run([py, "-m", "unidic", "download"], log, what="step")
+    if lang == "j":
+        try:   # no compiler needed: ready-made Windows files
+            log("Step 1 of 3: the Japanese speech engine (ready-made version)...")
+            _run([*pip, *friendly.JA_PREBUILT], log, what="step")
+            log("Step 2 of 3: the other Japanese add-ons...")
+            _run([*pip, *friendly.JA_REST], log, what="step")
         except JobError:
-            log("(The dictionary step was skipped. It is only needed by some versions.)")
+            log("The ready-made version could not be used. Trying the standard version (needs a C++ build tool)...")
+            _run([*pip, *friendly.JA_COMPILED], log, what="step")
+        step()
+        log("Step 3 of 3: the Japanese dictionary (a large download, please wait)...")
+        _run([py, "-m", "unidic", "download"], log, what="step")
+    else:
+        _run([*pip, *friendly.LANG_PACKAGES[lang]], log, what="step")
+        step()
     log("Done. You can listen to the voice again now.")
 
 # ----------------------------------------------------------------------------- deleting files

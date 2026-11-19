@@ -13,13 +13,19 @@ import re
 LANG_NAMES = {"j": "Japanese", "z": "Mandarin Chinese", "h": "Hindi", "e": "Spanish", "f": "French",
               "i": "Italian", "p": "Portuguese"}
 # pip packages that add a language to Kokoro (names follow the "misaki" language add-ons)
-LANG_PACKAGES = {"j": ["misaki[ja]"], "z": ["misaki[zh]"]}
+LANG_PACKAGES = {"z": ["misaki[zh]"]}
+# Japanese: the official "pyopenjtalk" has NO prebuilt Windows download (PyPI ships source only), so pip tries to
+# compile it and fails on PCs without a C++ compiler. "lemon-pyopenjtalk-prebuilt" is a third-party build of the same
+# module with ready-made Windows wheels, so we install that first and the other add-ons without the [ja] shortcut.
+JA_PREBUILT = ["lemon-pyopenjtalk-prebuilt"]
+JA_REST = ["misaki", "fugashi", "jaconv", "mojimoji", "unidic"]
+JA_COMPILED = ["misaki[ja]"]   # fallback: needs a C++ compiler
 LANG_MODULES = {
     "j": ("pyopenjtalk", "fugashi", "unidic", "jaconv", "mojimoji", "cutlet", "mecab"),
     "z": ("jieba", "pypinyin", "cn2an", "ordered_set", "ordered-set", "pypinyin_dict"),
 }
 WHAT = {"voice": "making the voice", "video": "drawing the video", "ad": "making the ad",
-        "export": "exporting the video", "manhwa": "building the manhwa video", "step": "one of the steps"}
+        "export": "exporting the video", "manhwa": "building the manhwa video", "step": "running a step"}
 
 def _tail(lines, n=40):
     return "\n".join(lines[-n:])
@@ -44,6 +50,15 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
                        f"The {name} voice add-on is not installed on this computer yet, so the voice could not be made.",
                        f"Click “Install {name} support”. It downloads a small add-on (you need internet, and it can take a few minutes). Then try again.",
                        {"type": "install_lang", "lang": code, "label": f"Install {name} support"})
+    # 1b) pip tried to build software from source and this PC has no C++ compiler
+    if any(k in low for k in ("no cmake_c_compiler", "no cmake_cxx_compiler", "microsoft visual c++", "vcvarsall", "cl.exe",
+                              "failed building wheel", "getting requirements to build wheel", "building wheel for")):
+        return out("This add-on needs a build tool that is not on your computer",
+                   "The add-on had to be built on your PC, and that needs Microsoft’s free C++ build tools, which are not installed. "
+                   "This is a Windows setup issue, not a problem with your files.",
+                   "Easiest fix: install “Build Tools for Visual Studio” from visualstudio.microsoft.com/downloads (scroll to “All downloads” → "
+                   "“Build Tools”), tick “Desktop development with C++”, finish the install, restart this app, and click Install again. "
+                   "It is a big download (several GB).")
     # 2) the voice or its model needs a download and there is no internet
     if any(k in low for k in ("max retries", "connectionerror", "urlopen error", "getaddrinfo", "huggingface", "name resolution", "timed out")):
         return out("No internet connection",
