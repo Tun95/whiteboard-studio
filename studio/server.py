@@ -8,7 +8,7 @@ from . import __version__, config, engine, friendly, voices
 
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
-KINDS = {"image": ({".png", ".jpg", ".jpeg"}, "images"), "audio": ({".wav", ".mp3", ".m4a", ".ogg", ".flac"}, "audio"),
+KINDS = {"image": ({".png", ".jpg", ".jpeg"}, "images"), "overlay": ({".png", ".jpg", ".jpeg", ".gif", ".webp"}, "images"), "audio": ({".wav", ".mp3", ".m4a", ".ogg", ".flac"}, "audio"),
          "video": ({".mp4", ".mov", ".mkv", ".webm"}, "media"), "adpack": ({".zip"}, "work")}
 
 class State:
@@ -93,7 +93,7 @@ def library() -> dict:
         items = sorted((p for p in d.iterdir() if p.is_file() and p.suffix.lower() in exts), key=lambda p: p.stat().st_mtime, reverse=True) if d.is_dir() else []
         return [{"name": p.name, "size": p.stat().st_size, "folder": folder} for p in items]
     return {"videos": files("out", {".mp4"}), "uploads": files("media", KINDS["video"][0]),
-            "audio": files("audio", KINDS["audio"][0]), "images": files("images", KINDS["image"][0]),
+            "audio": files("audio", KINDS["audio"][0]), "images": files("images", KINDS["overlay"][0]),
             "packs": engine.list_ad_packs(pr)}
 
 class Handler(BaseHTTPRequestHandler):

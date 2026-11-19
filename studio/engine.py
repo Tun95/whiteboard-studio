@@ -354,6 +354,30 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
         fparts += [v, a]; concat.append(f"[v{i}][a{i}]")
     fparts.append("".join(concat) + f"concat=n={len(clips)}:v=1:a=1[vc][ac]")
     vlabel = "vc"
+    # pictures, logos, GIFs and watermarks placed on the screen
+    n_in = len(clips)
+    ovs = []
+    for o in (spec.get("overlays") or []):
+        try:
+            f = _find_media(project, o.get("file", ""))
+        except JobError:
+            continue
+        ovs.append((o, f))
+    for j, (o, f) in enumerate(ovs):
+        if f.suffix.lower() == ".gif":
+            inputs += ["-ignore_loop", "0", "-i", str(f)]
+        else:
+            inputs += ["-loop", "1", "-framerate", str(fps), "-i", str(f)]
+        idx = n_in + j
+        w = min(1.5, max(0.03, float(o.get("w") or 0.2))); pw = max(16, int(W * w)); pw -= pw % 2
+        op = min(1.0, max(0.05, float(o.get("opacity") if o.get("opacity") is not None else 1.0)))
+        cx = min(1.0, max(0.0, float(o.get("x") if o.get("x") is not None else 0.5)))
+        cy = min(1.0, max(0.0, float(o.get("y") if o.get("y") is not None else 0.5)))
+        s0 = float(o.get("start") or 0); e0 = float(o.get("end") or 0) or total
+        fparts.append(f"[{idx}:v]trim=duration={total:.3f},setpts=PTS-STARTPTS,fps={fps},scale={pw}:-2,format=rgba,colorchannelmixer=aa={op}[ov{j}]")
+        fparts.append(f"[{vlabel}][ov{j}]overlay=x={W*cx:.1f}-overlay_w/2:y={H*cy:.1f}-overlay_h/2:enable='between(t,{s0},{e0})':eof_action=repeat:format=auto[vo{j}]")
+        vlabel = f"vo{j}"
+    n_ov = len(ovs)
     # captions / title text
     font = None
     ap = config.animator_path()
@@ -389,13 +413,12 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
     if fo > 0: af.append(f"afade=t=out:st={max(0, total - fo)}:d={fo}")
     if af:
         fparts.append(f"[ac]{','.join(af)}[af]"); alabel = "af"
-    n_in = len(clips)
     tracks = []
     for k, tr in enumerate(spec.get("tracks") or []):
         src = _find_media(project, tr.get("file", ""))
         loop = ["-stream_loop", "-1"] if tr.get("kind") == "music" else []
         inputs += [*loop, "-i", str(src)]
-        idx = n_in + k
+        idx = n_in + n_ov + k
         delay = int(float(tr.get("start") or 0) * 1000)
         vol = float(tr.get("volume", 0.3))
         fparts.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol},adelay={delay}|{delay},atrim=0:{total},asetpts=PTS-STARTPTS[m{k}]")

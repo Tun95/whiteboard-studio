@@ -86,7 +86,7 @@ async function deleteMedia(folder, name){
   const clean = (list, test) => { for(let i = list.length - 1; i >= 0; i--) if(test(list[i])) list.splice(i, 1); };
   if(folder === "images") ["videoScenes","manhwaScenes"].forEach(k => App.proj[k] && clean(App.proj[k].scenes, s => s.image === name));
   if(folder === "audio") ["videoScenes","manhwaScenes"].forEach(k => App.proj[k] && App.proj[k].scenes.forEach(s => { if(s.audio === name){ s.audio = ""; } }));
-  const ed = App.proj.editor; if(ed){ clean(ed.clips, c => c.file === name); clean(ed.tracks, t => t.file === name); ed.sel = 0; }
+  const ed = App.proj.editor; if(ed){ clean(ed.clips, c => c.file === name); clean(ed.tracks, t => t.file === name); if(ed.overlays) clean(ed.overlays, o => o.file === name); ed.selK = ""; }
   saveProj(); document.dispatchEvent(new Event("mediachanged")); toast("Deleted " + name); return true;
 }
 

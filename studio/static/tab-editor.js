@@ -4,22 +4,22 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     <div class="ed-bar">
       <div class="grp"><button id="edUndo" title="Undo the last change (Ctrl+Z)" type="button">↶ Undo</button><button id="edRedo" title="Redo (Ctrl+Y)" type="button">↷ Redo</button></div>
       <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂ Cut here</button><button id="edDelete" title="Remove the selected item (Delete key)" type="button">🗑 Remove</button></div>
-      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Add text</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Add music or voice</button></div>
+      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Add text</button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼 Add picture</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Add music or voice</button></div>
       <div class="grp right"><button id="edZoomOut" title="Zoom the timeline out (-)" type="button">−</button><span class="note">Zoom</span><button id="edZoomIn" title="Zoom the timeline in (+)" type="button">+</button><button id="edFit" title="Fit the whole video on screen" type="button">Fit</button>
         <button class="primary" id="edExportBtn" type="button">Export video</button></div>
     </div>
     <div class="ed-top">
       <section class="ed-pool">
-        <div class="ed-tabs"><button class="on" data-pt="v" type="button">Videos</button><button data-pt="a" type="button">Audio</button></div>
-        <div class="row" style="margin:6px 0"><button class="small" id="eUpVideo" type="button">Upload video</button><button class="small" id="eUpAudio" type="button">Upload audio</button>
-          <input type="file" id="eFileV" accept=".mp4,.mov,.mkv,.webm" hidden><input type="file" id="eFileA" accept=".wav,.mp3,.m4a,.ogg,.flac" hidden></div>
+        <div class="ed-tabs"><button class="on" data-pt="v" type="button">Videos</button><button data-pt="i" type="button">Pictures</button><button data-pt="a" type="button">Audio</button></div>
+        <div class="row" style="margin:6px 0"><button class="small" id="eUpVideo" type="button">Upload video</button><button class="small" id="eUpImage" type="button">Upload picture</button><button class="small" id="eUpAudio" type="button">Upload audio</button>
+          <input type="file" id="eFileI" accept=".png,.jpg,.jpeg,.gif,.webp" hidden><input type="file" id="eFileV" accept=".mp4,.mov,.mkv,.webm" hidden><input type="file" id="eFileA" accept=".wav,.mp3,.m4a,.ogg,.flac" hidden></div>
         <div class="ed-list" id="edPool"></div>
       </section>
       <section class="ed-view">
         <div class="ed-stage" id="edStage"><div class="ed-frame" id="edFrame">
           <video id="edV0" playsinline preload="auto"></video><video id="edV1" playsinline preload="auto"></video>
-          <div class="ed-texts" id="edTexts"></div><div class="ed-fade" id="edFade"></div>
-          <div class="ed-empty" id="edEmpty"><b>Start here</b><span>1. Pick a video on the left and press “+ Add”.<br>2. Add text or music with the buttons on top.<br>3. Press Play to see everything together.</span></div>
+          <div class="ed-over" id="edOver"></div><div class="ed-texts" id="edTexts"></div><div class="ed-fade" id="edFade"></div>
+          <div class="ed-empty" id="edEmpty"><b>Start here</b><span>1. Pick a video on the left and press “+ Add”.<br>2. Add text, pictures or music with the buttons on top.<br>3. Press Play to see everything together.</span></div>
         </div></div>
         <div class="ed-transport">
           <button id="edPlay" class="primary" title="Play or pause (Space)" type="button">▶ Play</button>
@@ -41,7 +41,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button id="eClose" type="button">Close</button><button class="primary" id="eMake" type="button">Export video</button></div></dialog>`;
 
   // ---------------------------------------------------------------- state
-  const st = ps("editor", {clips:[], texts:[], tracks:[], fade_in:0, fade_out:0, size:"1920x1080", name:"edited-video", zoom:80, selK:"", selI:0});
+  const st = ps("editor", {clips:[], texts:[], tracks:[], overlays:[], fade_in:0, fade_out:0, size:"1920x1080", name:"edited-video", zoom:80, selK:"", selI:0});
   let lib = {videos:[], uploads:[], audio:[]}, poolTab = "v";
   const job = new JobPanel($("#eJob",el));
   const fmt = n => (Math.round(n*10)/10).toString();
@@ -55,16 +55,26 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
 
   // ---------------------------------------------------------------- undo / redo
   const undoS = [], redoS = [];
-  const snapshot = () => JSON.stringify({clips:st.clips, texts:st.texts, tracks:st.tracks, fade_in:st.fade_in, fade_out:st.fade_out, size:st.size});
+  const snapshot = () => JSON.stringify({clips:st.clips, texts:st.texts, tracks:st.tracks, overlays:st.overlays, fade_in:st.fade_in, fade_out:st.fade_out, size:st.size});
   function snap(){ undoS.push(snapshot()); if(undoS.length>80) undoS.shift(); redoS.length = 0; btns(); }
-  function restore(js){ Object.assign(st, JSON.parse(js)); st.selK=""; layoutAll(); renderInsp(); saveProj(); }
+  function restore(js){ Object.assign(st, JSON.parse(js)); st.selK=""; M.clear(); layoutAll(); renderInsp(); saveProj(); }
   function undo(){ if(!undoS.length) return; redoS.push(snapshot()); restore(undoS.pop()); btns(); }
   function redo(){ if(!redoS.length) return; undoS.push(snapshot()); restore(redoS.pop()); btns(); }
   function btns(){ $("#edUndo",el).disabled = !undoS.length; $("#edRedo",el).disabled = !redoS.length; }
 
   // ---------------------------------------------------------------- selection
-  const selItem = () => st.selK==="clip" ? st.clips[st.selI] : st.selK==="text" ? st.texts[st.selI] : st.selK==="track" ? st.tracks[st.selI] : null;
-  function select(k, i){ st.selK = k||""; st.selI = i||0; renderTimeline(); renderInsp(); }
+  st.overlays = st.overlays || [];
+  const LIST = k => ({clip:st.clips, text:st.texts, track:st.tracks, ov:st.overlays})[k];
+  const selItem = () => st.selK ? (LIST(st.selK)||[])[st.selI] || null : null;
+  const M = new Set();                                   // everything that is selected, as "kind:index" (Ctrl+click adds more)
+  const mk = (k,i) => k+":"+i, inSel = (k,i) => M.has(mk(k,i));
+  const group = () => [...M].map(x=>{ const [k,i] = x.split(":"); return {k, i:+i}; });
+  function select(k, i, add){
+    if(!k){ M.clear(); st.selK = ""; st.selI = 0; }
+    else if(add){ const key = mk(k,i); if(M.has(key)){ M.delete(key); const g = group().pop(); st.selK = g ? g.k : ""; st.selI = g ? g.i : 0; } else { M.add(key); st.selK = k; st.selI = i; } }
+    else { M.clear(); M.add(mk(k,i)); st.selK = k; st.selI = i; }
+    renderTimeline(); renderInsp(); P.textKey = ""; P.sync(P.playing);
+  }
 
   // ---------------------------------------------------------------- player (live preview)
   const frame = $("#edFrame",el), stage = $("#edStage",el), vids = [$("#edV0",el), $("#edV1",el)];
@@ -90,7 +100,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
       if(i !== this.cur || v.dataset.url !== clipUrl(c)) v = this.activate(i);
       const local = clamp(c.start + (t - this.starts[i]) * (c.speed||1), c.start, Math.max(c.start, c.end - 0.02));
       v.playbackRate = c.speed || 1; v.muted = mute; v.volume = clamp((c.volume==null?1:c.volume) * f, 0, 1);
-      if(play){ if(v.paused) v.play().catch(()=>{}); if(Math.abs(v.currentTime - local) > 0.35) v.currentTime = local; }
+      if(play){ if(v.paused) v.play().catch(e=>{ if(e && e.name==="NotAllowedError" && this.playing){ this.pause(); toast("Your browser blocked the preview. Click ▶ Play once more.", true); } }); if(Math.abs(v.currentTime - local) > 0.35) v.currentTime = local; }
       else { v.pause(); if(Math.abs(v.currentTime - local) > 0.03) v.currentTime = local; }
       const nx = st.clips[i+1];   // get the next clip ready so the cut is smooth
       if(nx && this.starts[i+1] - t < 1.5){ const o = vids[1-this.act], u = clipUrl(nx); if(o.dataset.url !== u){ o.src = u; o.dataset.url = u; o.load(); } if(o.paused && Math.abs(o.currentTime - nx.start) > 0.05) o.currentTime = nx.start; }
@@ -116,7 +126,18 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(key !== this.textKey){ this.textKey = key;
       $("#edTexts",el).innerHTML = act.map(({x,i})=>`<div class="ed-text ${x.style==='title'?'title':'cap'} ${esc(x.position||'bottom')} ${st.selK==='text'&&st.selI===i?'sel':''}">${esc(wrapCaption(x.text, W, Math.floor(B*(x.style==='title'?0.075:0.05))))}</div>`).join(""); }
     $("#edFade",el).style.opacity = String(1 - f);
+    this.over(t);
     this.paint();
+  };
+  // pictures / logos / GIFs on the screen (drag them to move, drag the corners to resize)
+  P.over = function(t){
+    const box = $("#edOver",el), total = this.total;
+    const vis = st.overlays.map((o,i)=>{ const on = t >= (o.start||0) - 1e-6 && t <= ((o.end||0) || total || 1e9) + 1e-6; return {o,i,on, sel:inSel("ov",i)}; }).filter(x=>x.on || x.sel);
+    const key = vis.map(x=>x.i+"|"+x.o.file+"|"+x.on+"|"+x.sel).join("¦") + (M.size>1?"m":"");
+    if(key !== this.ovKey){ this.ovKey = key;
+      box.innerHTML = vis.map(x=>`<div class="ed-ov ${x.on?'':'ghost'} ${x.sel?'sel':''}" data-i="${x.i}"><img src="/files/images/${enc(x.o.file)}" draggable="false" alt="">${x.sel && M.size===1 ? '<i class="rh tl" data-c="tl"></i><i class="rh tr" data-c="tr"></i><i class="rh bl" data-c="bl"></i><i class="rh br" data-c="br"></i>' : ''}</div>`).join(""); }
+    box.querySelectorAll(".ed-ov").forEach(d=>{ const o = st.overlays[+d.dataset.i]; if(!o) return;
+      d.style.left = (o.x*100)+"%"; d.style.top = (o.y*100)+"%"; d.style.width = (o.w*100)+"%"; d.style.opacity = d.classList.contains("ghost") ? "" : String(o.opacity==null?1:o.opacity); });
   };
   P.paint = function(){
     $("#edTime",el).textContent = mmss(this.t) + " / " + mmss(this.total);
@@ -127,10 +148,16 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   P.play = function(){
     if(!st.clips.length){ toast("Add a video clip first.", true); return; }
     if(this.t >= this.total - 0.05) this.t = 0;
-    this.playing = true; this.w0 = performance.now(); this.t0 = this.t; $("#edPlay",el).textContent = "❚❚ Pause";
+    this.playing = true; this.w0 = performance.now(); this.t0 = this.t; this.stall = 0; $("#edPlay",el).textContent = "❚❚ Pause";
+    this.sync(true);   // start the picture and sound right now, while the click still counts (browsers block it otherwise)
     cancelAnimationFrame(this.raf); const tick = now=>{
       if(!this.playing) return;
       if(!isShown()){ this.pause(); return; }
+      const cv = vids[this.act];
+      if(st.clips.length && (cv.readyState < 3 || cv.seeking)){   // the video is still loading: hold the clock so the start is never skipped
+        if(!this.stall) this.stall = now;
+        if(now - this.stall < 10000){ this.t0 = this.t; this.w0 = now; this.sync(true); this.raf = requestAnimationFrame(tick); return; }
+      } else this.stall = 0;
       this.t = this.t0 + (now - this.w0)/1000;
       if(this.t >= this.total){ this.t = this.total; this.pause(); return; }
       this.sync(true); this.raf = requestAnimationFrame(tick); };
@@ -169,6 +196,12 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
         <div class="pi-b"><b title="${esc(f.name)}">${esc(f.name)}</b><span class="note">${f.tag}</span>
         <div class="row"><button class="small" data-add="${esc(f.name)}" data-folder="${f.src}" type="button">+ Add</button><button class="del" data-del="${esc(f.name)}" data-folder="${f.src}" type="button">Delete</button></div></div></div>`).join("")
         || '<div class="note" style="padding:8px">No videos yet. Make one in another tab, or press “Upload video”.</div>';
+    } else if(poolTab==="i"){
+      box.innerHTML = lib.images.map(f=>`<div class="pool-item" draggable="true" data-kind="image" data-name="${esc(f.name)}">
+        <img class="pi-img" src="/files/images/${enc(f.name)}" alt="" draggable="false">
+        <div class="pi-b"><b title="${esc(f.name)}">${esc(f.name)}</b>
+        <div class="row"><button class="small" data-addpic="${esc(f.name)}" type="button">+ Add to screen</button><button class="del" data-del="${esc(f.name)}" data-folder="images" type="button">Delete</button></div></div></div>`).join("")
+        || '<div class="note" style="padding:8px">No pictures yet. Press “Upload picture” (PNG, JPG or GIF). A PNG with a see-through background is best for a logo or watermark.</div>';
     } else {
       box.innerHTML = lib.audio.map(f=>`<div class="pool-item aud" draggable="true" data-kind="audio" data-name="${esc(f.name)}">
         <div class="pi-b"><b title="${esc(f.name)}">♪ ${esc(f.name)}</b>
@@ -182,11 +215,12 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     const b = e.target.closest("button"); if(!b) return;
     if(b.dataset.del){ await deleteMedia(b.dataset.folder, b.dataset.del); return; }
     if(b.dataset.listen){ if(!listener.paused && listener.dataset.f===b.dataset.listen){ listener.pause(); b.textContent="▶ Listen"; return; } listener.src="/files/audio/"+enc(b.dataset.listen); listener.dataset.f=b.dataset.listen; listener.play().catch(()=>{}); b.textContent="❚❚ Stop"; listener.onended=()=>{ b.textContent="▶ Listen"; }; return; }
+    if(b.dataset.addpic){ await addOverlay(b.dataset.addpic); return; }
     if(b.dataset.add){ b.dataset.audio ? await addTrack(b.dataset.add) : await addClip(b.dataset.add, b.dataset.folder); }
   };
-  [["#eUpVideo","#eFileV","video"],["#eUpAudio","#eFileA","audio"]].forEach(([bt,fi,kind])=>{
+  [["#eUpVideo","#eFileV","video"],["#eUpAudio","#eFileA","audio"],["#eUpImage","#eFileI","overlay"]].forEach(([bt,fi,kind])=>{
     $(bt,el).onclick = ()=>$(fi,el).click();
-    $(fi,el).onchange = async e=>{ const f=e.target.files[0]; if(!f) return; e.target.value=""; try{ await upload(kind,f); toast("Uploaded "+f.name); poolTab = kind==="audio"?"a":"v"; loadLib(); }catch(err){ reportError(err); } };
+    $(fi,el).onchange = async e=>{ const f=e.target.files[0]; if(!f) return; e.target.value=""; try{ await upload(kind,f); toast("Uploaded "+f.name); poolTab = kind==="audio"?"a":kind==="overlay"?"i":"v"; loadLib(); }catch(err){ reportError(err); } };
   });
   const infoCache = {};
   async function info(file){ return infoCache[file] || (infoCache[file] = await api("/api/media/info?file="+enc(file))); }
@@ -209,6 +243,16 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   }
   $("#edAddText",el).onclick = ()=>{ snap(); const t0 = r1(P.t), t1 = r1(Math.max(P.total, t0+3)); st.texts.push({text:"Your text here", start:t0, end:Math.min(t1, r1(t0+3)), position:"bottom", style:"caption"});
     st.selK="text"; st.selI=st.texts.length-1; layoutAll(); renderInsp(); saveProj(); const ta=$("#edInsp textarea",el)||$("textarea",$("#edInsp",el)); ta && ta.select(); };
+  async function addOverlay(file, at, cx, cy){
+    try{
+      const dim = await new Promise(res=>{ const im = new Image(); im.onload = ()=>res({w:im.naturalWidth, h:im.naturalHeight}); im.onerror = ()=>res({w:400,h:400}); im.src = "/files/images/"+enc(file); });
+      snap(); const [W,H] = st.size.split("x").map(Number), s0 = r1(at==null ? P.t : at);
+      let w = Math.min(0.3, Math.max(0.08, (dim.w/ W) < 0.3 ? dim.w/W : 0.3)); if(dim.h/dim.w * w * W > H*0.8) w = (H*0.8) / (dim.h/dim.w) / W;
+      st.overlays.push({file, start:s0, end:r1(Math.min(s0+5, P.total > s0 ? P.total : s0+5)), x:cx==null?0.5:cx, y:cy==null?0.5:cy, w:r1(w*100)/100, opacity:1, ar:r2(dim.h/dim.w)});
+      select("ov", st.overlays.length-1); layoutAll(); saveProj();
+    }catch(err){ reportError(err); }
+  }
+  $("#edAddPic",el).onclick = ()=>{ poolTab="i"; renderPool(); if(lib.images.length) toast("Pick a picture on the left and press “+ Add to screen”."); else $("#eFileI",el).click(); };
   $("#edAddAudio",el).onclick = ()=>{ poolTab="a"; renderPool(); toast(lib.audio.length ? "Pick a music or voice file on the left and press “+ Add”." : "Upload a music or voice file first (left panel)."); };
   function splitHere(){
     const i = P.clipAt(P.t); const c = st.clips[i];
@@ -219,7 +263,9 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   }
   function removeSel(){
     if(!st.selK) { toast("Click something on the timeline first."); return; } snap();
-    ({clip:st.clips, text:st.texts, track:st.tracks})[st.selK].splice(st.selI,1); st.selK=""; layoutAll(); renderInsp(); saveProj();
+    const g = group(); if(!g.length) g.push({k:st.selK, i:st.selI});
+    ["clip","text","track","ov"].forEach(k=>{ g.filter(x=>x.k===k).map(x=>x.i).sort((a,b)=>b-a).forEach(i=>LIST(k).splice(i,1)); });
+    M.clear(); st.selK=""; P.ovKey = ""; layoutAll(); renderInsp(); saveProj();
   }
   $("#edSplit",el).onclick = splitHere; $("#edDelete",el).onclick = removeSel; $("#edUndo",el).onclick = undo; $("#edRedo",el).onclick = redo;
 
@@ -227,18 +273,21 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   const LAB = 96;
   const lanes = ()=>$(".tl-ruler-lane",el);
   function renderTimeline(){
+    if(M.size <= 1){ M.clear(); if(st.selK && selItem()) M.add(mk(st.selK, st.selI)); else st.selK = ""; }
     const pps = st.zoom, sc = $("#tlScroll",el);
     const W = Math.ceil(Math.max(P.total + 6, (sc.clientWidth - LAB)/pps) * pps);
     const step = pps>=120?1 : pps>=60?2 : pps>=30?5 : pps>=15?10 : 30;
     let ticks = ""; for(let s=0; s*pps<=W; s+=step) ticks += `<i style="left:${s*pps}px"><span>${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}</span></i>`;
-    const clips = st.clips.map((c,i)=>`<div class="blk clip ${st.selK==='clip'&&st.selI===i?'sel':''}" data-k="clip" data-i="${i}" style="left:${P.starts[i]*pps}px;width:${Math.max(8,clipLen(c)*pps)}px" title="${esc(c.file)}">
+    const clips = st.clips.map((c,i)=>`<div class="blk clip ${inSel('clip',i)?'sel':''}" data-k="clip" data-i="${i}" style="left:${P.starts[i]*pps}px;width:${Math.max(8,clipLen(c)*pps)}px" title="${esc(c.file)}">
         <span class="hdl l" data-h="l"></span><b>${esc(c.file)}</b><em>${fmt(clipLen(c))}s${(c.speed||1)!==1?` · ${c.speed}×`:''}${c.volume===0?' · muted':''}</em><span class="hdl r" data-h="r"></span></div>`).join("")
       || `<div class="tl-hint">Add a video from the left panel, or drag it here.</div>`;
-    const texts = st.texts.map((x,i)=>{ const s0=x.start||0, e0=(x.end||0)||P.total||3; return `<div class="blk text ${st.selK==='text'&&st.selI===i?'sel':''}" data-k="text" data-i="${i}" style="left:${s0*pps}px;width:${Math.max(8,(e0-s0)*pps)}px"><span class="hdl l" data-h="l"></span><b>T ${esc((x.text||"(empty)").split("\n")[0])}</b><span class="hdl r" data-h="r"></span></div>`; }).join("");
-    const aud = st.tracks.map((tr,i)=>{ const len = tr.kind==="music" ? Math.max(0,P.total - tr.start) : (tr.duration || 3); return `<div class="tl-row"><div class="tl-lab">${tr.kind==='music'?'Music':'Voice'} ${i+1}</div><div class="tl-lane"><div class="blk ${tr.kind==='music'?'music':'voice'} ${st.selK==='track'&&st.selI===i?'sel':''}" data-k="track" data-i="${i}" style="left:${tr.start*pps}px;width:${Math.max(8,len*pps)}px"><b>♪ ${esc(tr.file)}</b></div></div></div>`; }).join("");
+    const texts = st.texts.map((x,i)=>{ const s0=x.start||0, e0=(x.end||0)||P.total||3; return `<div class="blk text ${inSel('text',i)?'sel':''}" data-k="text" data-i="${i}" style="left:${s0*pps}px;width:${Math.max(8,(e0-s0)*pps)}px"><span class="hdl l" data-h="l"></span><b>T ${esc((x.text||"(empty)").split("\n")[0])}</b><span class="hdl r" data-h="r"></span></div>`; }).join("");
+    const pics = st.overlays.map((o,i)=>{ const s0=o.start||0, e0=(o.end||0)||P.total||3; return `<div class="blk ov ${inSel('ov',i)?'sel':''}" data-k="ov" data-i="${i}" style="left:${s0*pps}px;width:${Math.max(8,(e0-s0)*pps)}px" title="${esc(o.file)}"><span class="hdl l" data-h="l"></span><b>🖼 ${esc(o.file)}</b><span class="hdl r" data-h="r"></span></div>`; }).join("");
+    const aud = st.tracks.map((tr,i)=>{ const len = tr.kind==="music" ? Math.max(0,P.total - tr.start) : (tr.duration || 3); return `<div class="tl-row"><div class="tl-lab">${tr.kind==='music'?'Music':'Voice'} ${i+1}</div><div class="tl-lane"><div class="blk ${tr.kind==='music'?'music':'voice'} ${inSel('track',i)?'sel':''}" data-k="track" data-i="${i}" style="left:${tr.start*pps}px;width:${Math.max(8,len*pps)}px"><b>♪ ${esc(tr.file)}</b></div></div></div>`; }).join("");
     $("#tlInner",el).style.width = (LAB+W)+"px";
     $("#tlInner",el).innerHTML = `<div class="tl-row"><div class="tl-lab"></div><div class="tl-lane tl-ruler-lane" style="width:${W}px">${ticks}</div></div>
       <div class="tl-row tall"><div class="tl-lab">Video</div><div class="tl-lane" data-lane="v" style="width:${W}px">${clips}<div class="tl-drop hidden" id="tlDrop"></div></div></div>
+      <div class="tl-row"><div class="tl-lab">Pictures</div><div class="tl-lane" data-lane="p" style="width:${W}px">${pics}</div></div>
       <div class="tl-row"><div class="tl-lab">Text</div><div class="tl-lane" data-lane="t" style="width:${W}px">${texts}</div></div>${aud}
       <div class="tl-row"><div class="tl-lab">Music / voice</div><div class="tl-lane" data-lane="a" style="width:${W}px"><div class="tl-hint small">${st.tracks.length?'':'Add music or a voice recording with the ♪ button.'}</div></div></div>
       <div class="tl-ph" id="tlPh" style="left:${LAB + P.t*pps}px"></div>`;
@@ -256,46 +305,82 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   });
   function beginDrag(e, blk){
     const k = blk.dataset.k, i = +blk.dataset.i, h = e.target.dataset.h || "", x0 = e.clientX, pps = st.zoom;
-    const list = k==="clip"?st.clips : k==="text"?st.texts : st.tracks, item = list[i], orig = JSON.parse(JSON.stringify(item));
+    if(e.ctrlKey || e.metaKey){ select(k, i, true); return; }          // Ctrl + click: add to / remove from the selection
+    if(h || !inSel(k,i)) select(k, i); else { st.selK = k; st.selI = i; renderInsp(); }   // dragging one of several selected keeps them all
+    const grp = group().filter(g=> k==="clip" ? g.k==="clip" : g.k!=="clip");
+    const orig = new Map(grp.map(g=>[mk(g.k,g.i), JSON.parse(JSON.stringify(LIST(g.k)[g.i]))]));
+    const item = LIST(k)[i], o0 = orig.get(mk(k,i));
     let moved = false, dropIdx = i;
-    select(k, i);
-    const blockEl = ()=>$(`.blk[data-k="${k}"][data-i="${i}"]`, el);
+    const selClips = grp.map(g=>g.i).sort((a,b)=>a-b);
     const mv = ev=>{
       const dx = ev.clientX - x0; if(!moved && Math.abs(dx) < 4) return;
       if(!moved){ moved = true; snap(); if(P.playing) P.pause(); }
       const ds = dx/pps;
       if(k==="clip"){
-        const sp = orig.speed||1;
-        if(h==="l"){ item.start = r1(clamp(orig.start + ds*sp, 0, orig.end-0.2)); }
-        else if(h==="r"){ item.end = r1(clamp(orig.end + ds*sp, orig.start+0.2, orig.duration||1e9)); }
-        else { const b = blockEl(); if(b){ b.style.transform = `translateX(${dx}px)`; b.classList.add("drag"); }
-          const mid = P.starts[i] + clipLen(orig)/2 + ds; dropIdx = 0; st.clips.forEach((c,j)=>{ if(j!==i && P.starts[j] + clipLen(c)/2 < mid) dropIdx++; });
-          const dr = $("#tlDrop",el); let xx = 0; const others = st.clips.filter((_,j)=>j!==i); others.slice(0,dropIdx).forEach(c=>xx+=clipLen(c)); dr.style.left = xx*pps+"px"; dr.classList.remove("hidden"); return; }
-      } else if(k==="text"){
-        const len = (orig.end||P.total) - (orig.start||0);
-        if(h==="l") item.start = r1(clamp((orig.start||0)+ds, 0, (orig.end||P.total)-0.2));
-        else if(h==="r") item.end = r1(Math.max((orig.start||0)+0.2, (orig.end||P.total)+ds));
-        else { item.start = r1(Math.max(0,(orig.start||0)+ds)); item.end = r1(item.start + len); }
-      } else { item.start = r1(Math.max(0, orig.start + ds)); }
+        const sp = o0.speed||1;
+        if(h==="l"){ item.start = r1(clamp(o0.start + ds*sp, 0, o0.end-0.2)); }
+        else if(h==="r"){ item.end = r1(clamp(o0.end + ds*sp, o0.start+0.2, o0.duration||1e9)); }
+        else {
+          selClips.forEach(j=>{ const b = $(`.blk[data-k="clip"][data-i="${j}"]`, el); if(b){ b.style.transform = `translateX(${dx}px)`; b.classList.add("drag"); } });
+          const mid = P.starts[i] + clipLen(o0)/2 + ds; dropIdx = 0; st.clips.forEach((c,j)=>{ if(!selClips.includes(j) && P.starts[j] + clipLen(c)/2 < mid) dropIdx++; });
+          const dr = $("#tlDrop",el); let xx = 0; st.clips.filter((_,j)=>!selClips.includes(j)).slice(0,dropIdx).forEach(c=>xx+=clipLen(c)); dr.style.left = xx*pps+"px"; dr.classList.remove("hidden"); return; }
+      } else {
+        const timed = k==="track" ? false : true;
+        if(h && timed){
+          const s0 = o0.start||0, e0 = o0.end||P.total;
+          if(h==="l") item.start = r1(clamp(s0+ds, 0, e0-0.2)); else item.end = r1(Math.max(s0+0.2, e0+ds));
+        } else {
+          const minStart = Math.min(...grp.map(g=>orig.get(mk(g.k,g.i)).start||0)); const d = Math.max(ds, -minStart);
+          grp.forEach(g=>{ const it = LIST(g.k)[g.i], o = orig.get(mk(g.k,g.i)); it.start = r1((o.start||0) + d); if(g.k!=="track" && o.end) it.end = r1(o.end + d); });
+        }
+      }
       layoutAll(true);
     };
     const up = ev=>{
       document.removeEventListener("pointermove",mv); document.removeEventListener("pointerup",up);
-      if(!moved){ P.seek(Math.max(0, xToTime(ev))); renderInsp(); return; }
-      if(k==="clip" && !h && dropIdx !== i){ const [c] = st.clips.splice(i,1); st.clips.splice(dropIdx,0,c); st.selI = dropIdx; }
+      if(!moved){ if(M.size>1 && !(e.ctrlKey||e.metaKey)) select(k,i); P.seek(Math.max(0, xToTime(ev))); renderInsp(); return; }
+      if(k==="clip" && !h && selClips.length){
+        const moving = selClips.map(j=>st.clips[j]), rest = st.clips.filter((_,j)=>!selClips.includes(j));
+        rest.splice(dropIdx, 0, ...moving); st.clips.length = 0; st.clips.push(...rest);
+        M.clear(); moving.forEach((_,n)=>M.add(mk("clip", dropIdx+n))); st.selI = dropIdx + Math.max(0, selClips.indexOf(i));
+      }
       layoutAll(); renderInsp(); saveProj();
     };
     document.addEventListener("pointermove",mv); document.addEventListener("pointerup",up);
   }
+  // drag / resize a picture right on the preview
+  $("#edOver",el).addEventListener("pointerdown", e=>{
+    const d = e.target.closest(".ed-ov"); if(!d || e.button) return; e.preventDefault();
+    const i = +d.dataset.i, o = st.overlays[i]; if(!o) return;
+    if(e.ctrlKey || e.metaKey){ select("ov", i, true); return; }
+    if(!inSel("ov",i) || M.size>1) select("ov", i);
+    const rect = frame.getBoundingClientRect(), handle = e.target.dataset.c || "", o0 = {x:o.x, y:o.y, w:o.w}, px0 = e.clientX, py0 = e.clientY;
+    let moved = false;
+    const mv = ev=>{
+      if(!moved && Math.hypot(ev.clientX-px0, ev.clientY-py0) < 3) return; if(!moved){ moved = true; snap(); }
+      if(handle){ const cx = rect.left + o0.x*rect.width, dxp = Math.abs(ev.clientX - cx); o.w = r2(clamp(2*dxp/rect.width, 0.03, 1.5)); }
+      else { let nx = o0.x + (ev.clientX-px0)/rect.width, ny = o0.y + (ev.clientY-py0)/rect.height;
+        if(Math.abs(nx-0.5) < 0.015) nx = 0.5; if(Math.abs(ny-0.5) < 0.015) ny = 0.5;     // snaps to the middle
+        o.x = r2(clamp(nx, 0, 1)); o.y = r2(clamp(ny, 0, 1)); }
+      P.over(P.t); const ins = $("#edInsp",el); const sl = $("input[data-f=wpct]",ins); if(sl){ sl.value = Math.round(o.w*100); const vw = $("#vw",ins); if(vw) vw.textContent = Math.round(o.w*100)+"%"; }
+    };
+    const up = ()=>{ document.removeEventListener("pointermove",mv); document.removeEventListener("pointerup",up); if(moved) saveProj(); };
+    document.addEventListener("pointermove",mv); document.addEventListener("pointerup",up);
+  });
+  const r2 = n => Math.round(n*1000)/1000;
   // drag from the media pool onto the timeline
   const tlIn = $("#tlInner",el);
   $("#edPool",el).addEventListener("dragstart", e=>{ const it = e.target.closest(".pool-item"); if(!it) return; e.dataTransfer.setData("text/plain", JSON.stringify({kind:it.dataset.kind, name:it.dataset.name, folder:it.dataset.folder||""})); });
+  frame.addEventListener("dragover", e=>e.preventDefault());
+  frame.addEventListener("drop", async e=>{ e.preventDefault(); let d; try{ d = JSON.parse(e.dataTransfer.getData("text/plain")); }catch(_){ return; }
+    if(d.kind!=="image") return; const r = frame.getBoundingClientRect(); await addOverlay(d.name, P.t, r2((e.clientX-r.left)/r.width), r2((e.clientY-r.top)/r.height)); });
   tlIn.addEventListener("dragover", e=>{ e.preventDefault(); });
   tlIn.addEventListener("drop", async e=>{
     e.preventDefault(); let d; try{ d = JSON.parse(e.dataTransfer.getData("text/plain")); }catch(_){ return; }
     const t = Math.max(0, xToTime(e));
     if(d.kind==="video"){ let idx = 0; st.clips.forEach((c,j)=>{ if(P.starts[j] + clipLen(c)/2 < t) idx++; }); await addClip(d.name, d.folder, idx); }
     else if(d.kind==="audio") await addTrack(d.name, t);
+    else if(d.kind==="image") await addOverlay(d.name, t);
   });
 
   // ---------------------------------------------------------------- inspector
@@ -306,10 +391,24 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
       box.innerHTML = `<h2>Your video</h2><p class="note">Click a clip, text or sound on the timeline to change it here.</p>
         ${row("Video shape",`<select data-p="size"><option value="1920x1080">Wide 1920x1080</option><option value="1280x720">Wide 1280x720</option><option value="1080x1920">Tall 1080x1920 (Shorts / Reels)</option></select>`)}
         <div class="two"><div>${row("Fade in (s)",`<input type="number" data-p="fade_in" min="0" step="0.1" value="${st.fade_in}">`)}</div><div>${row("Fade out (s)",`<input type="number" data-p="fade_out" min="0" step="0.1" value="${st.fade_out}">`)}</div></div>
-        <p class="note" style="margin-top:14px"><b>Shortcuts</b><br>Space: play / pause · S: cut here · Delete: remove<br>← →: step 0.1s (Shift: 1s) · + −: zoom · Ctrl+Z: undo</p>`;
+        <p class="note" style="margin-top:14px"><b>Shortcuts</b><br>Space: play / pause · S: cut here · Delete: remove<br>← →: step 0.1s (Shift: 1s) · Ctrl+Z: undo<br>Mouse wheel on the timeline: zoom · Shift + wheel: slide sideways<br>Ctrl + click: select several · Ctrl + A: select all</p>`;
       $("select[data-p=size]",box).value = st.size; return;
     }
-    if(st.selK==="clip"){
+    if(M.size > 1){
+      box.innerHTML = `<h2>${M.size} items selected</h2><p class="note">Drag any selected block on the timeline to move them all together. Ctrl + click adds or removes one.</p>
+        <div class="row"><button class="del" data-a="delall" type="button">🗑 Remove all ${M.size}</button><button class="small" data-a="desel" type="button">Clear selection</button></div>`;
+    } else if(st.selK==="ov"){
+      const o = it, grid = [["tl","↖"],["tc","↑"],["tr","↗"],["ml","←"],["mc","●"],["mr","→"],["bl","↙"],["bc","↓"],["br","↘"]];
+      box.innerHTML = `<h2>Picture on screen</h2><img class="pi-prev" src="/files/images/${enc(o.file)}" alt=""><b class="ellip" title="${esc(o.file)}">${esc(o.file)}</b>
+        <p class="note" style="margin:4px 0">Drag the picture on the preview to move it. Drag a corner to make it bigger or smaller.</p>
+        <button class="primary" data-a="watermark" type="button" title="Small, see-through, bottom right, for the whole video">Make it a watermark</button>
+        ${row(`Size: <b id="vw">${Math.round(o.w*100)}%</b>`,`<input type="range" data-f="wpct" min="3" max="100" step="1" value="${Math.round(o.w*100)}">`)}
+        ${row(`See-through: <b id="vo">${Math.round((o.opacity==null?1:o.opacity)*100)}%</b>`,`<input type="range" data-f="opacity" min="0.1" max="1" step="0.05" value="${o.opacity==null?1:o.opacity}">`)}
+        <label>Quick place</label><div class="grid9">${grid.map(([c,a])=>`<button type="button" data-a="place" data-c="${c}">${a}</button>`).join("")}</div>
+        <div class="two"><div>${row("Shows from (s)",`<input type="number" data-f="start" min="0" step="0.1" value="${fmt(o.start||0)}">`)}</div><div>${row("Shows until (s)",`<input type="number" data-f="end" min="0" step="0.1" value="${fmt(o.end||0)}">`)}</div></div>
+        <div class="row"><button class="small" data-a="tstart" type="button">From playhead</button><button class="small" data-a="tend" type="button">Until playhead</button><button class="small" data-a="whole" type="button">Whole video</button></div>
+        <div class="row" style="margin-top:8px"><button class="small" data-a="dupov" type="button">Duplicate</button><button class="small ghost" data-a="del" type="button">Remove</button></div>`;
+    } else if(st.selK==="clip"){
       const c = it, i = P.clipAt(P.t), here = i===st.selI;
       box.innerHTML = `<h2>Video clip</h2><b class="ellip" title="${esc(c.file)}">${esc(c.file)}</b><div class="note">Plays for ${fmt(clipLen(c))} s</div>
         <div class="two"><div>${row("Play from (s)",`<input type="number" data-f="start" min="0" step="0.1" value="${fmt(c.start)}">`)}</div><div>${row("Play until (s)",`<input type="number" data-f="end" min="0" step="0.1" value="${fmt(c.end)}">`)}</div></div>
@@ -344,6 +443,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     const it = selItem(); if(!it) return; let v = e.target.value;
     if(["start","end","volume"].includes(f) || (f==="speed")) v = parseFloat(v); if(Number.isNaN(v)) v = 0;
     if(st.selK==="clip"){ it[f] = f==="speed" ? (v||1) : v; if(f==="start") it.start = Math.max(0, Math.min(it.start, it.end-0.1)); if(f==="end"){ it.end = Math.max(it.start+0.1, it.duration ? Math.min(it.end, it.duration) : it.end); } }
+    else if(st.selK==="ov"){ if(f==="wpct"){ it.w = clamp(v/100, 0.03, 1.5); const vw=$("#vw",insp); if(vw) vw.textContent = Math.round(v)+"%"; } else { it[f] = v; const vo=$("#vo",insp); if(f==="opacity" && vo) vo.textContent = Math.round(v*100)+"%"; } }
     else if(st.selK==="text"){ it[f] = v; }
     else { it[f] = v; if(f==="file"){ infoCache[v] ? it.duration = infoCache[v].duration : info(v).then(i=>{ it.duration = i.duration; layoutAll(true); }).catch(()=>{}); } }
     if(f==="volume"){ const vl=$("#vl",insp); if(vl) vl.textContent = Math.round(v*100)+"%"; }
@@ -353,7 +453,15 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   insp.addEventListener("input", e=>{ if(e.target.matches("textarea,input[type=range]")) field(e); });
   insp.addEventListener("change", field);
   insp.addEventListener("click", e=>{
-    const b = e.target.closest("button[data-a]"); if(!b) return; const a = b.dataset.a, it = selItem(); snap();
+    const b = e.target.closest("button[data-a]"); if(!b) return; const a = b.dataset.a;
+    if(a==="delall"){ removeSel(); return; }
+    if(a==="desel"){ select(null); return; }
+    const it = selItem(); snap();
+    if(a==="watermark"){ Object.assign(it, {w:0.16, opacity:0.7, start:0, end:0}); const [W,H] = st.size.split("x").map(Number); it.x = r2(1 - 0.04 - it.w/2); it.y = r2(1 - 0.04 - (it.w*W*(it.ar||0.5))/H/2); }
+    if(a==="place"){ const c = b.dataset.c, m = 0.03 + it.w/2; const [W,H] = st.size.split("x").map(Number); const mh = 0.03 + (it.w*W*(it.ar||0.5))/H/2;
+      it.x = c[1]==="l" ? m : c[1]==="r" ? 1-m : 0.5; it.y = c[0]==="t" ? mh : c[0]==="b" ? 1-mh : 0.5; }
+    if(a==="whole"){ it.start = 0; it.end = 0; }
+    if(a==="dupov"){ const copy = JSON.parse(JSON.stringify(it)); copy.x = clamp(copy.x+0.05,0,1); copy.y = clamp(copy.y+0.05,0,1); st.overlays.splice(st.selI+1,0,copy); st.selI += 1; M.clear(); M.add(mk("ov",st.selI)); P.ovKey = ""; }
     if(a==="del"){ snapDone(); removeSelNoSnap(); return; }
     if(a==="left" || a==="right"){ const j = st.selI + (a==="left"?-1:1); [st.clips[st.selI], st.clips[j]] = [st.clips[j], st.clips[st.selI]]; st.selI = j; }
     if(a==="setstart" || a==="setend"){ const i = P.clipAt(P.t); if(i===st.selI){ const s = r1(it.start + (P.t - P.starts[i])*(it.speed||1)); if(a==="setstart") it.start = Math.min(s, it.end-0.1); else it.end = Math.max(s, it.start+0.1); } }
@@ -362,11 +470,21 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     layoutAll(); renderInsp(); saveProj();
   });
   const snapDone = ()=>{};
-  function removeSelNoSnap(){ ({clip:st.clips, text:st.texts, track:st.tracks})[st.selK].splice(st.selI,1); st.selK=""; layoutAll(); renderInsp(); saveProj(); }
+  function removeSelNoSnap(){ LIST(st.selK).splice(st.selI,1); M.clear(); st.selK=""; P.ovKey = ""; layoutAll(); renderInsp(); saveProj(); }
 
   // ---------------------------------------------------------------- zoom, layout, keys
   function layoutAll(keepInsp){ P.layout(); renderTimeline(); P.textKey = ""; P.sync(P.playing); btns(); check(); }
   function zoom(f){ const c = clamp(Math.round(st.zoom*f), 8, 400); if(c===st.zoom) return; st.zoom = c; layoutAll(); saveProj(); }
+  $("#tlScroll",el).addEventListener("wheel", e=>{
+    const sc = $("#tlScroll",el);
+    if(e.shiftKey){ sc.scrollLeft += e.deltaY || e.deltaX; e.preventDefault(); return; }     // Shift + wheel: slide sideways
+    if(e.altKey) return;                                                                      // Alt + wheel: scroll up/down through tracks
+    e.preventDefault();
+    const xIn = e.clientX - sc.getBoundingClientRect().left, tAt = (sc.scrollLeft + xIn - LAB) / st.zoom;
+    let nz = Math.round(st.zoom * Math.exp(-clamp(e.deltaY,-240,240) * 0.0016)); if(nz === st.zoom) nz += e.deltaY < 0 ? 1 : -1;
+    nz = clamp(nz, 8, 400); if(nz === st.zoom) return; st.zoom = nz; layoutAll();
+    sc.scrollLeft = Math.max(0, LAB + tAt*nz - xIn); saveProj();
+  }, {passive:false});
   $("#edZoomIn",el).onclick = ()=>zoom(1.4); $("#edZoomOut",el).onclick = ()=>zoom(1/1.4);
   $("#edFit",el).onclick = ()=>{ const w = $("#tlScroll",el).clientWidth - LAB - 30; st.zoom = clamp(Math.floor(w / Math.max(5, P.total+1)), 8, 400); layoutAll(); saveProj(); };
   document.addEventListener("keydown", e=>{
@@ -375,6 +493,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
     if(k===" "){ e.preventDefault(); $("#edPlay",el).click(); }
     else if(ctrl && k.toLowerCase()==="z"){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if(ctrl && k.toLowerCase()==="y"){ e.preventDefault(); redo(); }
+    else if(ctrl && k.toLowerCase()==="a"){ e.preventDefault(); M.clear(); [["clip",st.clips],["text",st.texts],["track",st.tracks],["ov",st.overlays]].forEach(([kk,l])=>l.forEach((_,i)=>M.add(mk(kk,i)))); const g = group()[0]; if(g){ st.selK = g.k; st.selI = g.i; } renderTimeline(); renderInsp(); P.ovKey=""; P.sync(P.playing); }
     else if(k==="s" || k==="S"){ splitHere(); }
     else if(k==="Delete" || k==="Backspace"){ e.preventDefault(); removeSel(); }
     else if(k==="ArrowLeft"){ e.preventDefault(); P.seek(P.t - (e.shiftKey?1:0.1)); }
@@ -394,7 +513,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   }
   $("#eMake",el).onclick = async ()=>{
     const b = $("#eMake",el); b.dataset.busy = "1"; b.disabled = true;
-    const out = await job.run("/api/edit/render", {clips:st.clips.map(c=>({file:c.file,start:c.start,end:c.end,speed:c.speed,volume:c.volume==null?1:c.volume})), texts:st.texts, tracks:st.tracks,
+    const out = await job.run("/api/edit/render", {clips:st.clips.map(c=>({file:c.file,start:c.start,end:c.end,speed:c.speed,volume:c.volume==null?1:c.volume})), texts:st.texts, tracks:st.tracks, overlays:st.overlays,
       fade_in:st.fade_in, fade_out:st.fade_out, size:st.size, name:st.name});
     b.dataset.busy = "0"; check(); if(out) loadLib();
   };
@@ -404,5 +523,5 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
 
   App.pages.editor.refresh = ()=>loadLib().then(()=>{ fitFrame(); layoutAll(); renderInsp(); });
   App.pages.editor._player = P; App.pages.editor._state = st;
-  P.layout(); btns(); renderTimeline(); renderInsp(); loadLib().then(()=>{ renderInsp(); });
+  P.layout(); btns(); renderTimeline(); renderInsp(); loadLib().then(()=>{ renderInsp(); layoutAll(); });
 }, onShow(){ App.pages.editor.refresh && App.pages.editor.refresh(); }});
