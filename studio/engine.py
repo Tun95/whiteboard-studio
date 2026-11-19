@@ -302,6 +302,20 @@ def _find_media(project: Path, ref: str) -> Path:
             return p
     raise JobError(f"File not found: {ref}")
 
+def wrap_caption(text: str, width: int, size: int) -> str:
+    """Breaks long captions into lines so they never run off the video. The live preview in the editor uses the same rule."""
+    cpl = max(8, int(width * 0.88 / (size * 0.58)))
+    out = []
+    for para in text.strip().split("\n"):
+        line = ""
+        for w in para.split():
+            if line and len(line) + 1 + len(w) > cpl:
+                out.append(line); line = w
+            else:
+                line = (line + " " + w) if line else w
+        out.append(line)
+    return "\n".join(out)
+
 def run_edit(project: Path, spec: dict, log, step) -> Path:
     clips = spec.get("clips") or []
     if not clips:
@@ -333,7 +347,8 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
             while sp > 2.0: tempo.append("atempo=2.0"); sp /= 2.0
             while sp < 0.5: tempo.append("atempo=0.5"); sp /= 0.5
             tempo.append(f"atempo={sp}")
-            a = f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,{','.join(tempo)},aresample=48000,aformat=channel_layouts=stereo[a{i}]"
+            cvol = min(2.0, max(0.0, float(c.get("volume") if c.get("volume") is not None else 1.0)))
+            a = f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,{','.join(tempo)},volume={cvol},aresample=48000,aformat=channel_layouts=stereo[a{i}]"
         else:
             a = f"anullsrc=r=48000:cl=stereo,atrim=0:{dur},asetpts=PTS-STARTPTS[a{i}]"
         fparts += [v, a]; concat.append(f"[v{i}][a{i}]")
@@ -351,11 +366,14 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
     if texts:
         shutil.copyfile(font, work / "font.otf")
     for j, t in enumerate(texts):
-        (work / f"t{j}.txt").write_text(t["text"].strip(), encoding="utf-8")
+        base = min(W, H)   # sizes follow the shorter side, so tall videos get readable (not huge) text
+        size = int(base * (0.075 if t.get("style") == "title" else 0.05))
+        is_title = t.get("style") == "title"
+        pad = max(3, int(base * 0.007)) if is_title else max(6, int(base * 0.017))
+        (work / f"t{j}.txt").write_text(wrap_caption(t["text"], W, size), encoding="utf-8")
         s0 = float(t.get("start") or 0); e0 = float(t.get("end") or 0) or total
-        pos = {"top": "y=h*0.08", "center": "y=(h-text_h)/2", "bottom": "y=h*0.82"}.get(t.get("position", "bottom"), "y=h*0.82")
-        size = int(H * (0.075 if t.get("style") == "title" else 0.05))
-        box = ":borderw=8:bordercolor=black@0.85" if t.get("style") == "title" else ":box=1:boxcolor=black@0.55:boxborderw=18"
+        pos = {"top": f"y=h*0.08+{pad}", "center": "y=(h-text_h)/2", "bottom": f"y=h*0.92-text_h-{pad}"}.get(t.get("position", "bottom"), f"y=h*0.92-text_h-{pad}")
+        box = f":borderw={pad}:bordercolor=black@0.85" if is_title else f":box=1:boxcolor=black@0.55:boxborderw={pad}"
         fparts.append(f"[{vlabel}]drawtext=fontfile=font.otf:textfile=t{j}.txt:fontcolor=white:fontsize={size}:x=(w-text_w)/2:{pos}{box}:"
                       f"enable='between(t,{s0},{e0})'[vt{j}]")
         vlabel = f"vt{j}"
