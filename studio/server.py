@@ -27,13 +27,16 @@ class State:
     def refresh_caps(self):
         self.caps = engine.capabilities(self.settings)
 
-    def start_job(self, total: int, fn) -> str:
+    def start_job(self, total: int, fn, title: str = "a job") -> str:
         """fn(log, step) -> Path of the finished video."""
         with self.lock:
-            if any(j["status"] == "running" for j in self.jobs.values()):
-                raise RuntimeError("Something is already being made. Wait for it to finish.")
+            busy = next((j for j in self.jobs.values() if j["status"] == "running"), None)
+            if busy:
+                err = RuntimeError(f"Something is still running: {busy.get('title', 'a job')}. Wait for it to finish; it can take several minutes.")
+                err.running_id = busy["id"]
+                raise err
             jid = uuid.uuid4().hex[:10]
-            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None, "error_info": None}
+            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None, "error_info": None, "title": title}
             self.jobs[jid] = job
         def log(line: str):
             job["log"].append(line); del job["log"][:-400]
@@ -176,7 +179,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
             if p == "/api/voice/install":
                 lang = str(body.get("lang", ""))
-                return self._json({"id": S.start_job(2, lambda log, step: (engine.install_lang(lang, S.settings, log, step), S.refresh_caps())[1])})
+                return self._json({"id": S.start_job(2, lambda log, step: (engine.install_lang(lang, S.settings, log, step, str(body.get("part", ""))), S.refresh_caps())[1],
+                                                  "installing " + friendly.LANG_NAMES.get(lang, lang) + " voice support")})
             if p == "/api/delete":
                 engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
             if p == "/api/ads/delete":
@@ -190,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"url": "/files/samples/" + out.name})
         except ValueError as e: return self._json({"error": str(e)}, 400)
         except engine.JobError as e: return self._json({"error": str(e), "info": e.info}, 400)
-        except RuntimeError as e: return self._json({"error": str(e)}, 409)
+        except RuntimeError as e: return self._json({"error": str(e), "running_id": getattr(e, "running_id", None)}, 409)
         return self._json({"error": "not found"}, 404)
 
 def free_port(preferred=8765) -> int:

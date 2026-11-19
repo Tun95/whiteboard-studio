@@ -19,7 +19,7 @@ const icon = n => `<svg viewBox="0 0 24 24">${ICONS[n]||""}</svg>`;
 async function api(path, opts){
   const r = await fetch(path, opts);
   const j = await r.json().catch(()=>({}));
-  if(!r.ok){ const e = new Error(j.error || ("Request failed ("+r.status+")")); e.info = j.info || null; throw e; }
+  if(!r.ok){ const e = new Error(j.error || ("Request failed ("+r.status+")")); e.info = j.info || null; e.data = j; throw e; }
   return j;
 }
 const post = (path, body) => api(path, {method:"POST", body:JSON.stringify(body||{})});
@@ -49,7 +49,9 @@ function wireProblem(root, info, onFixed){
     if(b.dataset.pa === "install"){
       const box = $(".pinst", root); b.disabled = true; box.classList.remove("hidden"); box.textContent = "Installing… please keep this window open.";
       try{
-        const {id} = await post("/api/voice/install", {lang: info.action.lang});
+        let id;
+        try{ ({id} = await post("/api/voice/install", {lang: info.action.lang, part: info.action.part || ""})); }
+        catch(err){ if(err.data && err.data.running_id){ id = err.data.running_id; box.textContent = "Something else is still installing. Showing its progress…"; } else throw err; }
         while(true){
           await new Promise(r => setTimeout(r, 1500));
           const j = await api("/api/job?id=" + id);

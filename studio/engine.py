@@ -399,12 +399,18 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
 
 
 # ----------------------------------------------------------------------------- language add-ons
-def install_lang(lang: str, settings: dict, log, step=lambda: None) -> None:
+def install_lang(lang: str, settings: dict, log, step=lambda: None, part: str = "") -> None:
     """Installs the extra Kokoro add-on for a language (Japanese, Mandarin) into the Kokoro python."""
     if lang not in friendly.LANG_NAMES or (lang not in friendly.LANG_PACKAGES and lang != "j"):
         raise JobError("That language does not need an add-on.")
     py = _kokoro_python(settings)
     pip = [py, "-m", "pip", "install", "--upgrade"]
+    if lang == "j" and part == "dict":
+        log("Downloading the Japanese dictionary (a large download, please keep this window open)...")
+        _run([py, "-m", "unidic", "download"], log, what="step")
+        step(); step()
+        log("Done. You can listen to the voice again now.")
+        return
     log(f"Installing {friendly.LANG_NAMES[lang]} support. This needs internet and can take a few minutes...")
     if lang == "j":
         try:   # no compiler needed: ready-made Windows files
