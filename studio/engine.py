@@ -436,6 +436,7 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
     # The graph goes straight on the command line: the old "-filter_complex_script" option was removed from newer FFmpeg versions.
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-stats", *inputs, "-filter_complex", graph,
            "-map", f"[{vlabel}]", "-map", f"[{alabel}]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+           "-pix_fmt", "yuv420p", "-profile:v", "high",   # yuv420p = plays in every player, phone and website (pictures/GIFs on top used to make it yuv444p)
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{total:.3f}", str(out)]
     log(f"Exporting {len(clips)} clip(s), about {total:.1f} seconds...")
     _run(cmd, log, cwd=str(work), what="export")
