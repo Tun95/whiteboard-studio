@@ -27,22 +27,23 @@ registerPage("editor", {title:"Editor", sub:"Join clips, trim, add music, titles
   async function loadLib(){
     lib = await api("/api/library");
     const v = [...lib.videos.map(f=>({...f,kind:"video"})), ...lib.uploads.map(f=>({...f,kind:"video"}))];
-    $("#eMedia",el).innerHTML = v.map(f=>`<div class="libitem"><b title="${esc(f.name)}">${esc(f.name)}</b><button class="small" data-add="${esc(f.name)}" data-folder="${f.folder}">+ Add to timeline</button></div>`).join("")
-      + lib.audio.map(f=>`<div class="libitem"><b title="${esc(f.name)}">♪ ${esc(f.name)}</b><button class="small" data-track="${esc(f.name)}">+ Add as track</button></div>`).join("")
+    $("#eMedia",el).innerHTML = v.map(f=>`<div class="libitem"><b title="${esc(f.name)}">${esc(f.name)}</b><div class="row"><button class="small" data-add="${esc(f.name)}" data-folder="${f.folder}">+ Add to timeline</button><button class="del" data-del="${esc(f.name)}" data-folder="${f.folder}" type="button">Delete</button></div></div>`).join("")
+      + lib.audio.map(f=>`<div class="libitem"><b title="${esc(f.name)}">♪ ${esc(f.name)}</b><div class="row"><button class="small" data-track="${esc(f.name)}">+ Add as track</button><button class="del" data-del="${esc(f.name)}" data-folder="audio" type="button">Delete</button></div></div>`).join("")
       || '<div class="note">Nothing here yet. Make a video in another tab, or upload one.</div>';
   }
   $("#eMedia",el).onclick = async e=>{
     const b = e.target.closest("button"); if(!b) return;
+    if(b.dataset.del){ await deleteMedia(b.dataset.folder, b.dataset.del); return; }
     if(b.dataset.add){
       try{ const info = await api("/api/media/info?file="+encodeURIComponent(b.dataset.add));
         st.clips.push({file:b.dataset.add, folder:b.dataset.folder, start:0, end:info.duration, speed:1, duration:info.duration}); st.sel = st.clips.length-1; draw(); saveProj();
-      }catch(err){ toast(err.message,true); }
+      }catch(err){ reportError(err); }
     }
     if(b.dataset.track){ st.tracks.push({file:b.dataset.track, kind:"music", volume:0.3, start:0}); drawTracks(); saveProj(); }
   };
   [["#eUpVideo","#eFileV","video"],["#eUpAudio","#eFileA","audio"]].forEach(([bt,fi,kind])=>{
     $(bt,el).onclick = ()=>$(fi,el).click();
-    $(fi,el).onchange = async e=>{ const f=e.target.files[0]; if(!f) return; e.target.value=""; try{ await upload(kind,f); toast("Uploaded "+f.name); loadLib(); }catch(err){ toast(err.message,true); } };
+    $(fi,el).onchange = async e=>{ const f=e.target.files[0]; if(!f) return; e.target.value=""; try{ await upload(kind,f); toast("Uploaded "+f.name); loadLib(); }catch(err){ reportError(err); } };
   });
 
   function clipLen(c){ return Math.max(0, (c.end - c.start) / (c.speed||1)); }
@@ -123,4 +124,5 @@ registerPage("editor", {title:"Editor", sub:"Join clips, trim, add music, titles
   document.addEventListener("capsready", check);
   loadLib().then(()=>{ draw(); drawTexts(); drawTracks(); });
   App.pages.editor.refresh = ()=>loadLib().then(()=>{ draw(); drawTracks(); });
+  document.addEventListener("mediachanged", ()=>App.pages.editor.refresh());
 }, onShow(){ App.pages.editor.refresh && App.pages.editor.refresh(); }});

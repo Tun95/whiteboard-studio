@@ -1,7 +1,11 @@
 """Fake Kokoro for testing the app without the real voice model (makes a quiet tone per sentence)."""
 import numpy as np
 class KPipeline:
-    def __init__(self, lang_code): pass
+    def __init__(self, lang_code):
+        import os
+        # test switch: pretend the Japanese / Mandarin add-on is not installed
+        if os.environ.get("STUB_MISSING_LANG") == lang_code:
+            raise ModuleNotFoundError("No module named 'pyopenjtalk'" if lang_code == "j" else "No module named 'jieba'")
     def __call__(self, text, voice, speed):
         n = int(24000 * max(0.6, 0.06 * len(text)) / speed)
         t = np.arange(n) / 24000

@@ -25,7 +25,7 @@ registerPage("ads", {title:"App ads", sub:"Phone adverts with captions, zooms an
     packs = (await api("/api/library")).packs;
     if(!packs.find(p=>p.name===st.pack)) st.pack = packs[0] ? packs[0].name : "";
     $("#aPacks",el).innerHTML = packs.map(p=>`<div class="pack ${p.name===st.pack?'sel':''}" data-n="${esc(p.name)}"><b>${esc(p.name)}</b>
-      ${p.has_voice?'<span class="tag">voice ready</span>':''}${p.has_preview?'<span class="tag">preview</span>':''}</div>`).join("") || '<div class="note">No ad packs yet. Import one below.</div>';
+      ${p.has_voice?'<span class="tag">voice ready</span>':''}${p.has_preview?'<span class="tag">preview</span>':''}<button class="del" data-delpack="${esc(p.name)}" type="button">Delete</button></div>`).join("") || '<div class="note">No ad packs yet. Import one below.</div>';
     check();
   }
   function check(){
@@ -38,11 +38,17 @@ registerPage("ads", {title:"App ads", sub:"Phone adverts with captions, zooms an
     const w=$("#aProblem",el); w.textContent=msg; w.classList.toggle("hidden",!msg);
     $("#aMake",el).disabled = !!msg || $("#aMake",el).dataset.busy==="1";
   }
-  $("#aPacks",el).onclick = e=>{ const c=e.target.closest(".pack"); if(c){ st.pack=c.dataset.n; saveProj(); load(); } };
+  $("#aPacks",el).onclick = async e=>{
+    const d = e.target.closest("[data-delpack]");
+    if(d){ e.stopPropagation(); const n = d.dataset.delpack;
+      if(await confirmBox("Delete this ad?", `“${n}” and all its files will be removed from your computer. This cannot be undone.`)){
+        try{ await post("/api/ads/delete", {name:n}); toast("Deleted "+n); if(st.pack===n) st.pack=""; saveProj(); load(); }catch(err){ reportError(err); } }
+      return; }
+    const c=e.target.closest(".pack"); if(c){ st.pack=c.dataset.n; saveProj(); load(); } };
   $("#aImport",el).onclick = ()=>$("#aFile",el).click();
   $("#aFile",el).onchange = async e=>{
     const f=e.target.files[0]; if(!f) return; e.target.value="";
-    try{ const r = await upload("adpack", f); st.pack = r.pack; saveProj(); toast("Imported: "+r.pack); await load(); }catch(err){ toast(err.message,true); }
+    try{ const r = await upload("adpack", f); st.pack = r.pack; saveProj(); toast("Imported: "+r.pack); await load(); }catch(err){ reportError(err); }
   };
   $("#aMake",el).onclick = async ()=>{
     const b=$("#aMake",el); b.dataset.busy="1"; b.disabled=true;

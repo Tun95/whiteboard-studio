@@ -5,7 +5,7 @@ registerPage("voices", {title:"Voices", sub:"Listen to every AI voice, then pick
       <select id="vqGender"><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option></select></div>
     <label style="margin-top:0">Try your own sentence (optional)</label>
     <input type="text" id="vqText" placeholder="Leave empty to use a standard sample sentence in each voice’s language">
-    <p class="note" style="margin:8px 0 0">The first time you listen to a voice it takes a few seconds to make the sample. After that it plays instantly. <b>Default voice:</b> <span id="vqDefault"></span></p>
+    <p class="note" style="margin:8px 0 0">The first time you listen to a voice it takes a few seconds to make the sample. After that it plays instantly. <b>Default voice:</b> <span id="vqDefault"></span> <button class="small ghost" id="vqClear" type="button">Delete saved samples</button></p>
     <div class="warn hidden" id="vqWarn">Kokoro is not installed here, so previews are off. You can still choose a default voice.</div></div>
     <div class="vgrid" id="vqGrid"></div>`;
   const groups = [...new Set(App.voices.map(v=>v.group))];
@@ -25,5 +25,8 @@ registerPage("voices", {title:"Voices", sub:"Listen to every AI voice, then pick
     if(b.dataset.act==="listen") listen(id, b, $("#vqText",el).value);
     if(b.dataset.act==="use"){ App.proj.voice = {default:id}; saveProj(); draw(); toast("Default voice: "+id); }
   };
+  $("#vqClear",el).onclick = async ()=>{
+    if(!await confirmBox("Delete saved samples?", "The voice samples you listened to will be removed to free space. You can listen again any time; they are simply made again.", "Delete")) return;
+    try{ const r = await post("/api/voice/clear"); toast(r.removed+" sample(s) deleted."); }catch(e){ reportError(e); } };
   document.addEventListener("capsready", draw); draw();
 }});

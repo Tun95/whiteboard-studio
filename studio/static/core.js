@@ -19,7 +19,7 @@ const icon = n => `<svg viewBox="0 0 24 24">${ICONS[n]||""}</svg>`;
 async function api(path, opts){
   const r = await fetch(path, opts);
   const j = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(j.error || ("Request failed ("+r.status+")"));
+  if(!r.ok){ const e = new Error(j.error || ("Request failed ("+r.status+")")); e.info = j.info || null; throw e; }
   return j;
 }
 const post = (path, body) => api(path, {method:"POST", body:JSON.stringify(body||{})});
@@ -27,6 +27,65 @@ const upload = (kind, file) => api(`/api/upload?kind=${kind}&name=${encodeURICom
 function toast(msg, err){
   const t = document.createElement("div"); t.className = "toast"+(err?" err":""); t.textContent = msg;
   $("#toasts").appendChild(t); setTimeout(()=>t.remove(), err?7000:3500);
+}
+
+// ---- friendly problem card (used by every tab) ----
+function problemHTML(info){
+  info = info || {};
+  const act = info.action && info.action.type === "install_lang" ? `<button class="primary" data-pa="install">${esc(info.action.label)}</button>` : "";
+  return `<div class="problem"><div class="ptitle">${esc(info.title || "Something went wrong")}</div>
+    <p>${esc(info.what || "")}</p>${info.fix ? `<p class="pfix"><b>What to do:</b> ${esc(info.fix)}</p>` : ""}
+    <div class="row">${act}${info.details ? `<button class="small" data-pa="copy" type="button">Copy details</button>` : ""}</div>
+    <div class="pinst note hidden"></div>
+    ${info.details ? `<details><summary>Technical details (for the developer)</summary><pre class="log">${esc(info.details)}</pre></details>` : ""}</div>`;
+}
+function wireProblem(root, info, onFixed){
+  root.onclick = async e => {
+    const b = e.target.closest("button[data-pa]"); if(!b) return;
+    if(b.dataset.pa === "copy"){
+      try{ await navigator.clipboard.writeText(info.details || ""); toast("Copied. You can paste it into a message."); }
+      catch(_){ toast("Could not copy. Select the text and copy it by hand.", true); }
+    }
+    if(b.dataset.pa === "install"){
+      const box = $(".pinst", root); b.disabled = true; box.classList.remove("hidden"); box.textContent = "Installing… please keep this window open.";
+      try{
+        const {id} = await post("/api/voice/install", {lang: info.action.lang});
+        while(true){
+          await new Promise(r => setTimeout(r, 1500));
+          const j = await api("/api/job?id=" + id);
+          box.textContent = "Installing… " + (j.log.filter(l => !l.startsWith("$")).slice(-1)[0] || "");
+          if(j.status === "done"){ box.textContent = "Installed. You can try again now."; toast("Installed. Try the voice again."); const st = await api("/api/state").catch(()=>null); if(st && st.caps){ App.caps = st.caps; chips && chips(); } onFixed && onFixed(); break; }
+          if(j.status === "error"){ root.innerHTML = problemHTML(j.error_info || {title:"Install failed", what:j.error}); wireProblem(root, j.error_info || {}, onFixed); break; }
+        }
+      }catch(err){ b.disabled = false; box.textContent = err.message; }
+    }
+  };
+}
+function showProblem(info){
+  let d = $("#problemDlg");
+  if(!d){ d = document.createElement("dialog"); d.id = "problemDlg"; d.className = "wide"; document.body.appendChild(d); }
+  d.innerHTML = `<div id="problemBody"></div><div class="row" style="justify-content:flex-end"><button id="problemClose" type="button">Close</button></div>`;
+  $("#problemBody", d).innerHTML = problemHTML(info); wireProblem($("#problemBody", d), info);
+  $("#problemClose", d).onclick = () => d.close(); if(!d.open) d.showModal();
+}
+function reportError(e){ if(e && e.info) showProblem(e.info); else toast(e && e.message ? e.message : String(e), true); }
+function confirmBox(title, text, okLabel){
+  return new Promise(res => {
+    const d = document.createElement("dialog"); document.body.appendChild(d);
+    d.innerHTML = `<h3>${esc(title)}</h3><p class="note">${esc(text)}</p><div class="row" style="justify-content:flex-end"><button data-r="0" type="button">Cancel</button><button class="danger" data-r="1" type="button">${esc(okLabel || "Delete")}</button></div>`;
+    d.onclick = e => { const b = e.target.closest("button"); if(b){ d.close(); res(b.dataset.r === "1"); } };
+    d.oncancel = () => res(false); d.onclose = () => d.remove(); d.showModal();
+  });
+}
+// Deletes one file after asking, and tidies anything in the app that pointed at it.
+async function deleteMedia(folder, name){
+  if(!await confirmBox("Delete this file?", `“${name}” will be removed from your computer. This cannot be undone.`)) return false;
+  try{ await post("/api/delete", {folder, name}); }catch(e){ reportError(e); return false; }
+  const clean = (list, test) => { for(let i = list.length - 1; i >= 0; i--) if(test(list[i])) list.splice(i, 1); };
+  if(folder === "images") ["videoScenes","manhwaScenes"].forEach(k => App.proj[k] && clean(App.proj[k].scenes, s => s.image === name));
+  if(folder === "audio") ["videoScenes","manhwaScenes"].forEach(k => App.proj[k] && App.proj[k].scenes.forEach(s => { if(s.audio === name){ s.audio = ""; } }));
+  const ed = App.proj.editor; if(ed){ clean(ed.clips, c => c.file === name); clean(ed.tracks, t => t.file === name); ed.sel = 0; }
+  saveProj(); document.dispatchEvent(new Event("mediachanged")); toast("Deleted " + name); return true;
 }
 
 // ---- app state (saved to the project on this computer)
@@ -68,7 +127,7 @@ async function listen(voiceId, btn, text){
     au.src = r.url + "?t=" + Date.now(); await au.play();
     btn.classList.remove("busy"); btn.classList.add("on"); btn.textContent = "■ Stop";
     au.onended = au.onpause = ()=>{ btn.classList.remove("on"); btn.textContent = "▶ Listen"; };
-  }catch(e){ btn.classList.remove("busy","on"); btn.textContent = "▶ Listen"; toast(e.message, true); }
+  }catch(e){ btn.classList.remove("busy","on"); btn.textContent = "▶ Listen"; reportError(e); }
 }
 // Adds a voice dropdown + Listen button into a container; returns {get(), set(v)}
 function voicePicker(mount, key){
@@ -85,16 +144,17 @@ function voicePicker(mount, key){
 class JobPanel{
   constructor(mount){
     mount.innerHTML = `<div class="card hidden"><h2>Result</h2><div class="bar"><i></i></div><div class="note state">Starting…</div>
-      <pre class="log hidden"></pre><video controls class="hidden"></video>
+      <div class="perr hidden"></div><pre class="log hidden"></pre><video controls class="hidden"></video>
       <div class="row hidden save"><a class="btn dl">Download MP4</a><span class="note">Also saved in your Whiteboard Wave Studio folder.</span></div></div>`;
     this.box = $(".card", mount); this.bar = $(".bar i", mount); this.state = $(".state", mount);
-    this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount);
+    this.perr = $(".perr", mount); this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount);
   }
+  fail(info){ this.perr.innerHTML = problemHTML(info); wireProblem(this.perr, info); this.perr.classList.remove("hidden"); }
   async run(path, body){
-    const b = this.box; b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
+    const b = this.box; this.perr.classList.add("hidden"); b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
     this.log.classList.remove("hidden"); this.log.textContent = ""; this.bar.style.width = "3%"; this.state.textContent = "Working… this can take a few minutes.";
     let id;
-    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = e.message; this.log.classList.add("hidden"); return null; }
+    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = ""; this.log.classList.add("hidden"); this.fail(e.info || {title:"Could not start", what:e.message}); return null; }
     while(true){
       await new Promise(r=>setTimeout(r,1200));
       let j; try{ j = await api("/api/job?id="+id); }catch(e){ this.state.textContent = e.message; return null; }
@@ -107,7 +167,7 @@ class JobPanel{
         this.dl.href = url; this.dl.download = j.output; this.save.classList.remove("hidden");
         return j.output;
       }
-      if(j.status==="error"){ this.state.textContent = "Something went wrong: "+j.error; return null; }
+      if(j.status==="error"){ this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden"); this.fail(j.error_info || {title:"Something went wrong", what:j.error}); return null; }
     }
   }
 }
@@ -182,6 +242,7 @@ function sceneEditor({mount, key, noun, extra}){
       render(); saveProj();
     }
   });
+  document.addEventListener("mediachanged", render);
   render();
   return Object.assign(api_, {box});
 }

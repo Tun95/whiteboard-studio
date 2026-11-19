@@ -39,3 +39,11 @@ Built from `whiteboard-animator` (MIT) + Kokoro voice. Owner: Akande Tunji.
     python run_studio.py                       # opens the browser
     set PYTHONPATH=whiteboard-animator         # Windows, if the animator is not pip-installed
 - [x] Backend: voice library/samples, manhwa runner, ad-pack runner, editor (ffmpeg) tested. UI tabs: in progress
+
+## Phase 3: fixes after user testing (branch studio-fixes)
+- [x] 1. Plain-language errors: `studio/friendly.py` turns technical failures into a headline, a plain explanation, what to do, and an optional button. Technical text is hidden under "Technical details" with a Copy button. Japanese / Mandarin voices: the cause is a missing Kokoro language add-on, so the error offers "Install Japanese/Mandarin support" (runs pip for `misaki[ja]` / `misaki[zh]` in the Kokoro python). NOT verified against real Kokoro: only tested with a fake pip and a fake Kokoro. Other languages (Spanish, French, Hindi, Italian, Portuguese) likely need eSpeak NG: the error says so but there is no install button.
+- [x] 2. Delete/remove: Library (videos, uploads, audio, images), Editor media list, Ad packs, and saved voice samples. Always asks first. Deleting a file also removes scenes, clips and tracks that used it.
+- [ ] 3. Editor: live preview of titles, captions, music and voices before export
+- [ ] 4. App ads: guided form (no ad.json, no zip packs)
+- [ ] 5. Editor redesign (DaVinci-style: media pool, preview, timeline with tracks)
+- [ ] 6. Plain-language wording pass over the other tabs

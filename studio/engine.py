@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os, re, shutil, subprocess, sys
 from pathlib import Path
-from . import config
+from . import config, friendly
 
 VOICES = ["am_liam", "am_onyx", "am_puck", "am_michael", "am_eric", "bm_george", "bm_lewis",
           "af_heart", "af_sarah", "af_nicole", "bf_emma", "bf_isabella"]
@@ -56,18 +56,28 @@ def capabilities(settings: dict) -> dict:
     return caps
 
 class JobError(Exception):
-    pass
+    """A problem to show the user. `info` (optional) is the friendly card: title / what / fix / action / details."""
+    def __init__(self, message: str, info: dict | None = None):
+        super().__init__(message)
+        self.info = info or {"title": "Problem", "what": message, "fix": "", "action": None, "details": ""}
 
-def _run(cmd: list[str], log, cwd=None) -> None:
+def _run(cmd: list[str], log, cwd=None, what: str = "step", voice: str = "") -> None:
     log("$ " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
-    p = subprocess.Popen(cmd, cwd=cwd, env=_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         text=True, encoding="utf-8", errors="replace")
+    lines: list[str] = []
+    try:
+        p = subprocess.Popen(cmd, cwd=cwd, env=_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, encoding="utf-8", errors="replace")
+    except FileNotFoundError as e:
+        info = friendly.explain([f"FileNotFoundError: {e}", cmd[0]], what, voice)
+        raise JobError(info["title"] + ". " + info["what"], info)
     for line in p.stdout:
         line = line.rstrip()
         if line:
-            log(line)
+            log(line); lines.append(line); del lines[:-120]
     if p.wait() != 0:
-        raise JobError(f"A step failed (exit code {p.returncode}). See the log above.")
+        info = friendly.explain(lines, what, voice)
+        info["details"] = f"(exit code {p.returncode})\n" + info["details"]
+        raise JobError(info["title"] + ". " + info["what"], info)
 
 def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict, log) -> None:
     work = out_wav.parent / "_voice_work"
@@ -76,7 +86,7 @@ def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict,
     script.write_text(text, encoding="utf-8")
     _run([_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")),
           "--script", str(script), "--out", str(work), "--name", out_wav.stem,
-          "--voice", voice, "--mode", style, "--fresh"], log)
+          "--voice", voice, "--mode", style, "--fresh"], log, what="voice", voice=voice)
     produced = work / (out_wav.stem + ".wav")
     if not produced.exists():
         raise JobError("The voice step finished but no audio file was made.")
@@ -139,7 +149,7 @@ def run_job(project: Path, scenes: list[dict], opts: dict, settings: dict, log, 
     elif opts.get("camera") == "off":
         cmd += ["--camera", "off"]
     log("Drawing the video...")
-    _run(cmd, log)
+    _run(cmd, log, what="video")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
@@ -200,7 +210,7 @@ def run_manhwa(project: Path, panels: list[dict], opts: dict, settings: dict, lo
     if any(p.get("audio_mode", "none") != "none" for p in panels):
         cmd += ["--audio", str(work / "audio")]
     log("Building the manhwa video...")
-    _run(cmd, log)
+    _run(cmd, log, what="manhwa")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
@@ -252,7 +262,7 @@ def run_ad(project: Path, opts: dict, settings: dict, log, step) -> Path:
         log(f"Making the voice ({opts.get('voice', 'am_liam')})...")
         _run([_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")), "--script", str(script),
               "--out", str(pack / "2-audio"), "--split", "--prefix", "scene", "--voice", opts.get("voice", "am_liam"),
-              "--mode", opts.get("style", "energetic"), "--fresh", "--name", "adtmp"], log)
+              "--mode", opts.get("style", "energetic"), "--fresh", "--name", "adtmp"], log, what="voice", voice=opts.get("voice", "am_liam"))
     step()
     jf = "ad-preview.json" if preview and (pack / "ad-preview.json").is_file() else "ad.json"
     suffix = "-preview" if preview else ""
@@ -265,7 +275,7 @@ def run_ad(project: Path, opts: dict, settings: dict, log, step) -> Path:
         cmd += ["--scene", str(int(opts["scene"]))]
         out = out.with_name(out.stem + f"-scene{int(opts['scene'])}.mp4"); cmd[cmd.index("-o") + 1] = str(out)
     log("Rendering the ad...")
-    _run(cmd, log, cwd=str(pack))
+    _run(cmd, log, cwd=str(pack), what="ad")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
@@ -381,8 +391,54 @@ def run_edit(project: Path, spec: dict, log, step) -> Path:
            "-map", f"[{vlabel}]", "-map", f"[{alabel}]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{total:.3f}", str(out)]
     log(f"Exporting {len(clips)} clip(s), about {total:.1f} seconds...")
-    _run(cmd, log, cwd=str(work))
+    _run(cmd, log, cwd=str(work), what="export")
     step()
     if not out.exists():
         raise JobError("The video was not created.")
     return out
+
+
+# ----------------------------------------------------------------------------- language add-ons
+def install_lang(lang: str, settings: dict, log, step=lambda: None) -> None:
+    """Installs the extra Kokoro add-on for a language (Japanese, Mandarin) into the Kokoro python."""
+    pk = friendly.LANG_PACKAGES.get(lang)
+    if not pk:
+        raise JobError("That language does not need an add-on.")
+    py = _kokoro_python(settings)
+    log(f"Installing {friendly.LANG_NAMES[lang]} support. This needs internet and can take a few minutes...")
+    _run([py, "-m", "pip", "install", "--upgrade", *pk], log, what="step")
+    step()
+    if lang == "j":   # the Japanese dictionary is a separate download (harmless if it is not needed)
+        log("Downloading the Japanese dictionary...")
+        try:
+            _run([py, "-m", "unidic", "download"], log, what="step")
+        except JobError:
+            log("(The dictionary step was skipped. It is only needed by some versions.)")
+    log("Done. You can listen to the voice again now.")
+
+# ----------------------------------------------------------------------------- deleting files
+FOLDERS = {"out": "out", "media": "media", "audio": "audio", "images": "images"}
+
+def delete_file(project: Path, folder: str, name: str) -> None:
+    if folder not in FOLDERS:
+        raise JobError("That kind of file cannot be deleted here.")
+    p = project / FOLDERS[folder] / safe_name(name)
+    if not p.is_file():
+        raise JobError("That file is already gone.")
+    try:
+        p.unlink()
+    except PermissionError:
+        raise JobError("The file is open in another program. Close it and try again.")
+
+def delete_pack(project: Path, name: str) -> None:
+    d = project / "ads" / safe_name(name)
+    if not (d / "ad.json").is_file():
+        raise JobError("That ad is already gone.")
+    shutil.rmtree(d, ignore_errors=True)
+
+def clear_samples() -> int:
+    d = config.data_dir() / "voice-samples"; n = 0
+    if d.is_dir():
+        for f in d.glob("*.wav"):
+            f.unlink(missing_ok=True); n += 1
+    return n

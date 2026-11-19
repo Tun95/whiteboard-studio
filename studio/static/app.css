@@ -88,3 +88,13 @@ a{color:var(--brand)}code{font-size:12px;word-break:break-all}
 
 input[type=checkbox]{width:auto;margin:3px 0 0}
 label.check{display:flex;gap:9px;align-items:flex-start;color:var(--ink);font-size:14px}
+
+.problem{border:1px solid #e8b4ad;background:#fdf1ef;color:#5a1d15;border-radius:12px;padding:14px 16px}
+@media (prefers-color-scheme: dark){.problem{background:#2a1512;border-color:#6b2f27;color:#ffd7d1}}
+.problem .ptitle{font-weight:800;font-size:16px;margin-bottom:4px}.problem p{margin:6px 0}.problem details{margin-top:10px}
+.problem summary{cursor:pointer;font-size:13px;opacity:.8}.problem .pinst{margin-top:8px}
+dialog.wide{max-width:560px}
+button.danger{background:#c0392b;border-color:#c0392b;color:#fff;font-weight:700}
+button.del{border-color:transparent;background:transparent;color:var(--bad);padding:2px 8px;font-size:13px}
+button.del:hover{background:#c0392b22;border-color:var(--bad)}
+.libitem .top{display:flex;gap:6px;align-items:center}.libitem .top b{flex:1}

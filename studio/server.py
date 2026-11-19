@@ -4,7 +4,7 @@ import json, mimetypes, socket, threading, traceback, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
-from . import __version__, config, engine, voices
+from . import __version__, config, engine, friendly, voices
 
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
@@ -24,13 +24,16 @@ class State:
     def _probe(self):
         self.caps = engine.capabilities(self.settings)
 
+    def refresh_caps(self):
+        self.caps = engine.capabilities(self.settings)
+
     def start_job(self, total: int, fn) -> str:
         """fn(log, step) -> Path of the finished video."""
         with self.lock:
             if any(j["status"] == "running" for j in self.jobs.values()):
                 raise RuntimeError("Something is already being made. Wait for it to finish.")
             jid = uuid.uuid4().hex[:10]
-            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None}
+            job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None, "error_info": None}
             self.jobs[jid] = job
         def log(line: str):
             job["log"].append(line); del job["log"][:-400]
@@ -42,9 +45,11 @@ class State:
                 job["output"] = out.name if out else None
                 job["status"] = "done"
             except engine.JobError as e:
-                job["error"] = str(e); job["status"] = "error"
+                job["error"] = str(e); job["error_info"] = e.info; job["status"] = "error"
             except Exception as e:
-                log(traceback.format_exc()); job["error"] = f"Unexpected problem: {e}"; job["status"] = "error"
+                tb = traceback.format_exc(); log(tb)
+                info = friendly.explain(tb.splitlines(), "step"); job["error"] = info["title"] + ". " + info["what"]
+                job["error_info"] = info; job["status"] = "error"
         threading.Thread(target=work, daemon=True).start()
         return jid
 
@@ -169,13 +174,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step))})
             if p == "/api/edit/render":
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
+            if p == "/api/voice/install":
+                lang = str(body.get("lang", ""))
+                return self._json({"id": S.start_job(2, lambda log, step: (engine.install_lang(lang, S.settings, log, step), S.refresh_caps())[1])})
+            if p == "/api/delete":
+                engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
+            if p == "/api/ads/delete":
+                engine.delete_pack(S.project, str(body.get("name", ""))); return self._json({"ok": True})
+            if p == "/api/voice/clear":
+                return self._json({"removed": engine.clear_samples()})
             if p == "/api/voice/sample":
                 if S.caps is not None and not S.caps.get("kokoro"):
                     return self._json({"error": "Kokoro is not installed on this computer, so voices cannot be previewed yet."}, 400)
                 out = engine.voice_sample(body.get("voice", ""), body.get("text", ""), S.settings)
                 return self._json({"url": "/files/samples/" + out.name})
         except ValueError as e: return self._json({"error": str(e)}, 400)
-        except engine.JobError as e: return self._json({"error": str(e)}, 400)
+        except engine.JobError as e: return self._json({"error": str(e), "info": e.info}, 400)
         except RuntimeError as e: return self._json({"error": str(e)}, 409)
         return self._json({"error": "not found"}, 404)
 
