@@ -13,6 +13,8 @@ const ICONS = {
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   heart:'<path d="M12 21s-8-5-8-11a5 5 0 0 1 8-3 5 5 0 0 1 8 3c0 6-8 11-8 11z"/>',
   play:'<path d="M7 4l13 8-13 8z"/>',
+  speaker:'<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24">${ICONS[n]||""}</svg>`;
 
@@ -248,3 +250,20 @@ function sceneEditor({mount, key, noun, extra}){
   render();
   return Object.assign(api_, {box});
 }
+
+
+// Runs a background job and calls ui.onTick(job) while it works. Resolves with the finished job, throws a friendly error otherwise.
+// If another job is still running, it follows that one instead of failing.
+async function runJob(path, body, ui){
+  ui = ui || {}; let id;
+  try{ ({id} = await post(path, body)); }
+  catch(e){ if(e.data && e.data.running_id){ id = e.data.running_id; ui.onNote && ui.onNote(e.message); } else throw e; }
+  while(true){
+    await new Promise(r => setTimeout(r, 1000));
+    const j = await api("/api/job?id=" + id);
+    ui.onTick && ui.onTick(j);
+    if(j.status === "done") return j;
+    if(j.status === "error"){ const err = new Error(j.error || "Something went wrong"); err.info = j.error_info; throw err; }
+  }
+}
+const lastLine = j => ((j.log || []).filter(l => !l.startsWith("$")).slice(-1)[0] || "").slice(0, 110);

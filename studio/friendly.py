@@ -28,7 +28,7 @@ LANG_MODULES = {
     "z": ("jieba", "pypinyin", "cn2an", "ordered_set", "ordered-set", "pypinyin_dict"),
 }
 WHAT = {"voice": "making the voice", "video": "drawing the video", "ad": "making the ad",
-        "export": "exporting the video", "manhwa": "building the manhwa video", "step": "running a step"}
+        "export": "exporting the file", "stt": "turning speech into text", "manhwa": "building the manhwa video", "step": "running a step"}
 
 def _tail(lines, n=40):
     return "\n".join(lines[-n:])
@@ -43,6 +43,17 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
     def out(title, what_, fix, action=None):
         return {"title": title, "what": what_, "fix": fix, "action": action, "details": details}
 
+    # 00) speech-to-text and PDF problems
+    if "error_pdf_script" in low or "error_pdf_font" in low:
+        return out("A PDF cannot show this language yet",
+                   "PDF files made by this app can show Latin, Cyrillic, Greek, Chinese, Japanese and Korean text. This transcript has characters it cannot draw (for example Hindi, Arabic or Thai).",
+                   "Export it as a Word document (.docx) or plain text (.txt) instead. Both keep every character.")
+    if what == "stt" and any(k in low for k in ("max retries", "connectionerror", "urlopen", "getaddrinfo", "huggingface", "name resolution", "timed out", "offline", "cannot find the requested files in the local cache", "couldn't connect", "could not connect")):
+        return out("The speech model could not be downloaded",
+                   "The first time you use a quality level, the app downloads its speech model (150 MB to 1.5 GB). The internet connection failed or was too slow.",
+                   "Connect to the internet and try again. The download continues from where it stopped, and after that it works offline.")
+    if what == "stt" and ("invalid data found" in low or "does not contain any stream" in low or "no audio" in low):
+        return out("This file could not be read", "The app could not find any sound in this file, or the file is damaged.", "Try a different file, or open it in the Editor and export it again first.")
     # 0) Japanese add-on is installed but its dictionary is missing (real error seen on Windows)
     if "failed initializing mecab" in low or "mecabrc" in low or ("unidic" in low and "dicdir" in low):
         return out("The Japanese dictionary is missing",

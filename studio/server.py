@@ -4,7 +4,7 @@ import json, mimetypes, socket, threading, time, traceback, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
-from . import __version__, adbuilder, config, engine, friendly, voices
+from . import __version__, adbuilder, config, engine, friendly, stt, voices
 
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
@@ -94,7 +94,7 @@ def library() -> dict:
         return [{"name": p.name, "size": p.stat().st_size, "folder": folder} for p in items]
     return {"videos": files("out", {".mp4"}), "uploads": files("media", KINDS["video"][0]),
             "audio": files("audio", KINDS["audio"][0]), "images": files("images", KINDS["overlay"][0]),
-            "packs": engine.list_ad_packs(pr)}
+            "packs": engine.list_ad_packs(pr), "documents": stt.list_transcripts(pr)["documents"]}
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhiteboardWaveStudio/" + __version__
@@ -169,12 +169,17 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/ads/spec":
             try: return self._json(adbuilder.load(STATE.project, (q.get("name") or [""])[0]))
             except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
+        if p == "/api/stt/status": return self._json(stt.status())
+        if p == "/api/stt/list": return self._json(stt.list_transcripts(STATE.project))
+        if p == "/api/stt/get":
+            try: return self._json(stt.load_transcript(STATE.project, (q.get("name") or [""])[0]))
+            except engine.JobError as e: return self._json({"error": str(e)}, 400)
         if p == "/api/job":
             job = STATE.jobs.get((q.get("id") or [""])[0])
             return self._json(job or {"error": "unknown job"}, 200 if job else 404)
         if p.startswith("/files/"):
             parts = p[len("/files/"):].split("/", 1)
-            if len(parts) == 2 and parts[0] in ("images", "audio", "out", "media"):
+            if len(parts) == 2 and parts[0] in ("images", "audio", "out", "media", "transcripts"):
                 return self._file(STATE.project / parts[0] / engine.safe_name(parts[1]))
             if len(parts) == 2 and parts[0] == "samples":
                 return self._file(config.data_dir() / "voice-samples" / engine.safe_name(parts[1]))
@@ -212,6 +217,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step))})
             if p == "/api/edit/render":
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
+            if p == "/api/stt/install":
+                return self._json({"id": S.start_job(3, lambda log, step: stt.install(S.settings, log, step), "installing the transcription add-on")})
+            if p == "/api/stt/transcribe":
+                return self._json({"id": S.start_job(100, lambda log, step: stt.transcribe(S.project, body, S.settings, log, step), "turning speech into text")})
+            if p == "/api/stt/export":
+                out = stt.export(S.project, body); return self._json({"name": out.name, "url": "/files/transcripts/" + out.name})
+            if p == "/api/tts/make":
+                if S.caps is not None and not S.caps.get("kokoro"):
+                    return self._json({"error": "Kokoro is not installed on this computer, so voices cannot be made yet."}, 400)
+                return self._json({"id": S.start_job(100, lambda log, step: engine.make_tts(S.project, body, S.settings, log, step), "making your audio")})
             if p == "/api/setup/run":
                 S.run_setup(); return self._json(S.setup)
             if p == "/api/voice/install":

@@ -61,7 +61,7 @@ class JobError(Exception):
         super().__init__(message)
         self.info = info or {"title": "Problem", "what": message, "fix": "", "action": None, "details": ""}
 
-def _run(cmd: list[str], log, cwd=None, what: str = "step", voice: str = "") -> None:
+def _run(cmd: list[str], log, cwd=None, what: str = "step", voice: str = "", skip: tuple = ()) -> None:
     log("$ " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
     lines: list[str] = []
     try:
@@ -73,7 +73,9 @@ def _run(cmd: list[str], log, cwd=None, what: str = "step", voice: str = "") -> 
     for line in p.stdout:
         line = line.rstrip()
         if line:
-            log(line); lines.append(line); del lines[:-120]
+            log(line)
+            if not (skip and line.startswith(skip)):   # progress ticks must not push the real error text out of the buffer
+                lines.append(line); del lines[:-120]
     if p.wait() != 0:
         info = friendly.explain(lines, what, voice)
         info["details"] = f"(exit code {p.returncode})\n" + info["details"]
@@ -92,6 +94,52 @@ def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict,
         raise JobError("The voice step finished but no audio file was made.")
     shutil.move(str(produced), str(out_wav))
     shutil.rmtree(work / (out_wav.stem + "_parts"), ignore_errors=True)
+
+def make_tts(project: Path, opts: dict, settings: dict, log, step) -> Path:
+    """Turns the person's own text into an audio file (WAV, plus MP3 when FFmpeg is there). Safe for very long texts: it can continue after a stop."""
+    import hashlib
+    from . import voices
+    text = str(opts.get("text") or "").strip()
+    if not text:
+        raise JobError("Type or paste some text first.")
+    voice = str(opts.get("voice") or "")
+    if voice not in {v["id"] for v in voices.library()}:
+        raise JobError("Pick a voice first.")
+    style = opts.get("style") if opts.get("style") in STYLES else "normal"
+    speed = opts.get("speed")
+    try: speed = float(speed) if speed not in (None, "", 0) else None
+    except (TypeError, ValueError): speed = None
+    if speed is not None: speed = min(1.4, max(0.7, speed))
+    fixes = str(opts.get("fixes") or "").strip()
+    audio = project / "audio"; audio.mkdir(exist_ok=True)
+    key = hashlib.sha1("\n".join([text, voice, style, str(speed), fixes]).encode("utf-8")).hexdigest()[:10]
+    work = project / "work" / "tts"; work.mkdir(parents=True, exist_ok=True)
+    stem = "tts_" + key
+    (work / (stem + ".txt")).write_text(text, encoding="utf-8")
+    (work / "pronounce.txt").write_text(fixes + "\n", encoding="utf-8") if fixes else (work / "pronounce.txt").unlink(missing_ok=True)
+    cmd = [_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")), "--script", str(work / (stem + ".txt")),
+           "--out", str(work), "--name", stem, "--voice", voice, "--mode", style]
+    if speed: cmd += ["--speed", f"{speed}"]
+    seen = {"n": 0}
+    def on_line(line: str):
+        m = re.match(r"\[(\d+)/(\d+)\]", line)
+        if m:
+            n, total = int(m.group(1)), max(1, int(m.group(2))); target = int(98 * n / total)
+            while seen["n"] < target: step(); seen["n"] += 1
+        log(line[:200])
+    _run(cmd, on_line, what="voice", voice=voice)
+    wav = work / (stem + ".wav")
+    if not wav.exists():
+        raise JobError("The voice step finished but no audio file was made.")
+    base = safe_name(str(opts.get("name") or "speech")); base = Path(base).stem if Path(base).suffix.lower() in {".wav", ".mp3"} else base
+    out = audio / (base + ".wav"); i = 1
+    while out.exists() or (audio / (out.stem + ".mp3")).exists():
+        out = audio / f"{base}-{i}.wav"; i += 1
+    shutil.move(str(wav), str(out))
+    mp3 = work / (stem + ".mp3")
+    if mp3.exists(): shutil.move(str(mp3), str(audio / (out.stem + ".mp3")))
+    shutil.rmtree(work / (stem + "_parts"), ignore_errors=True); (work / (stem + ".txt")).unlink(missing_ok=True)
+    return out
 
 def safe_name(name: str) -> str:
     name = re.sub(r"[^A-Za-z0-9._ -]", "_", Path(name).name).strip(" .")
@@ -503,7 +551,7 @@ def install_lang(lang: str, settings: dict, log, step=lambda: None, part: str = 
     log("Done. You can listen to the voice again now.")
 
 # ----------------------------------------------------------------------------- deleting files
-FOLDERS = {"out": "out", "media": "media", "audio": "audio", "images": "images"}
+FOLDERS = {"out": "out", "media": "media", "audio": "audio", "images": "images", "transcripts": "transcripts"}
 
 def delete_file(project: Path, folder: str, name: str) -> None:
     if folder not in FOLDERS:
