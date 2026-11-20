@@ -121,7 +121,8 @@ def transcribe(project: Path, spec: dict, settings: dict, log, step) -> Path:
                 try: got = sum(f.stat().st_size for f in models_dir().rglob("*") if f.is_file())
                 except OSError: continue
                 set_p(0.02 + 0.12 * min(1.0, got / want))
-                log(f"Downloading the speech model: {got // 1_000_000} MB of about {want // 1_000_000} MB. This only happens once.")
+                try: log(f"Downloading the speech model: {got // 1_000_000} MB of about {want // 1_000_000} MB. This only happens once.")
+                except Exception: return
         threading.Thread(target=watch, daemon=True).start()
     try:
         _run([str(venv_python()), str(WORKER), "transcribe", "--audio", str(wav), "--model", model, "--models-dir", str(models_dir()),

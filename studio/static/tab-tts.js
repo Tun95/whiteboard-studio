@@ -15,7 +15,7 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
       <textarea id="tFix" rows="3" placeholder="One fix per line, like:&#10;Tunji=Toon-jee&#10;Nginx=engine-ex"></textarea></details>
     <label>File name</label><input type="text" id="tName" placeholder="my-audio">
     <div class="warn hidden" id="tWarn">The AI voice is not ready on this computer yet, so audio cannot be made. Open the app again with internet on, or see the message at the top of the page.</div>
-    <div class="row"><button id="tListen" type="button">▶ Listen first</button><button class="primary" id="tMake" type="button">Make audio</button><span class="note">Your audio is saved as WAV, and also as MP3 when the video maker is ready.</span></div>
+    <div class="row"><button id="tListen" type="button">▶ Listen first</button><button id="tCancel" type="button" class="hidden">✕ Cancel</button><button class="primary" id="tMake" type="button">Make audio</button><span class="note">Your audio is saved as WAV, and also as MP3 when the video maker is ready.</span></div>
     <div class="pvbox hidden" id="tPv"><b>Listen first</b><div class="note" id="tPvState" style="margin:4px 0"></div>
       <div class="row" style="margin-top:6px"><button class="primary small hidden" id="tPvPlay" type="button">▶ Play the sample</button></div>
       <audio controls class="hidden" id="tPvAudio" style="width:100%;margin-top:8px"></audio>
@@ -55,12 +55,12 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
     box.classList.remove("hidden"); pa.classList.add("hidden"); $("#tPvPlay",el).classList.add("hidden"); pa.pause(); pst.textContent = "Getting a sample ready… about a minute the first time."; lb.disabled = true;
     try{
       const j = await runJob("/api/tts/make", {text:txt, selection:!!s, preview:true, voice:picker.get(), style:st.style, speed:st.speed, fixes:st.fixes},
-        {onTick:j=>{ pst.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ pst.textContent = m; }});
+        {cancel:$("#tCancel",el), onTick:j=>{ pst.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ pst.textContent = m; }});
       const pp = $("#tPvPlay",el); pa.onerror = ()=>{ pst.textContent = "The sample could not be played. Please press “Listen first” again."; };
       pa.src = "/files/preview/" + encodeURIComponent(j.output) + "?t=" + Date.now(); pa.load(); pa.classList.remove("hidden"); pp.classList.remove("hidden"); pp.onclick = ()=>{ pa.currentTime = 0; pa.play().catch(()=>{ pst.textContent = "Press the play button on the player below."; }); };
       pst.textContent = "Your sample is ready."; box.scrollIntoView({block:"nearest", behavior:"smooth"});
       pa.play().catch(()=>{});
-    }catch(e){ pst.textContent = ""; const info = e.info || {title:"Could not make the sample", what:e.message}; pst.innerHTML = problemHTML(info); wireProblem(pst, info); }
+    }catch(e){ pst.textContent = ""; if(e.cancelled){ pst.textContent = "Cancelled."; lb.disabled = false; return; } const info = e.info || {title:"Could not make the sample", what:e.message}; pst.innerHTML = problemHTML(info); wireProblem(pst, info); }
     lb.disabled = false;
   };
   const bar = $(".bar i",el), state = $("#tState",el), err = $("#tErr",el);
@@ -71,7 +71,7 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
     bar.style.width = "3%"; state.textContent = "Making your audio… long texts take a few minutes. Keep this window open."; btn.disabled = true;
     try{
       const j = await runJob("/api/tts/make", {text:T.value, voice:picker.get(), style:st.style, speed:st.speed, name:st.name || "my-audio", fixes:st.fixes},
-        {onTick:j=>{ bar.style.width = Math.max(3, Math.round(100*j.done/j.total))+"%"; state.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ state.textContent = m; }});
+        {cancel:$("#tCancel",el), onTick:j=>{ bar.style.width = Math.max(3, Math.round(100*j.done/j.total))+"%"; state.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ state.textContent = m; }});
       bar.style.width = "100%"; state.textContent = "Done! Press play to listen.";
       const wav = j.output, stem = wav.replace(/\.wav$/i,""), lib = await api("/api/library").catch(()=>({audio:[]}));
       const hasMp3 = (lib.audio||[]).some(a=>a.name === stem + ".mp3"), url = n => "/files/audio/" + encodeURIComponent(n);
@@ -79,7 +79,7 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
       $("#tDl",el).innerHTML = `${hasMp3 ? `<a class="btn primary" href="${url(stem+".mp3")}" download="${esc(stem)}.mp3">Download MP3</a>` : ""}<a class="btn" href="${url(wav)}" download="${esc(wav)}">Download WAV</a>`;
       $("#tDl",el).classList.remove("hidden"); $("#tSaved",el).classList.remove("hidden");
       document.dispatchEvent(new Event("mediachanged"));
-    }catch(e){ bar.style.width = "0%"; state.textContent = ""; const info = e.info || {title:"Could not make the audio", what:e.message}; err.innerHTML = problemHTML(info); wireProblem(err, info); err.classList.remove("hidden"); }
+    }catch(e){ bar.style.width = "0%"; state.textContent = ""; if(e.cancelled){ state.textContent = "Cancelled. Nothing was saved."; btn.disabled = false; return; } const info = e.info || {title:"Could not make the audio", what:e.message}; err.innerHTML = problemHTML(info); wireProblem(err, info); err.classList.remove("hidden"); }
     btn.disabled = false;
   };
 }});

@@ -2,7 +2,7 @@ registerPage("transcribe", {title:"Transcribe", sub:"Turn the speech in a video 
   el.innerHTML = `
   <div class="card hidden" id="xSetup"><h2>One-time setup</h2>
     <p class="note" style="margin-top:0">Transcribing uses a free, open-source speech engine (Whisper) that runs on this computer, so your files never leave it. It needs a small add-on (about 250 MB) and, the first time you use each quality level, a speech model download. You only do this once.</p>
-    <div class="row"><button class="primary" id="xInstall" type="button">Set up transcription</button></div><div class="note" id="xInstState"></div><div class="bar hidden" id="xInstBar"><i></i></div><div class="perr hidden" id="xInstErr"></div></div>
+    <div class="row"><button class="primary" id="xInstall" type="button">Set up transcription</button><button id="xInstCancel" type="button" class="hidden">✕ Cancel</button></div><div class="note" id="xInstState"></div><div class="bar hidden" id="xInstBar"><i></i></div><div class="perr hidden" id="xInstErr"></div></div>
   <div class="card"><h2>1. Pick a file</h2>
     <div class="row" style="margin-top:0"><select id="xFile" class="grow"></select><button id="xUp" type="button">Upload a file…</button>
       <input type="file" id="xFileIn" accept=".mp4,.mov,.mkv,.webm,.wav,.mp3,.m4a,.ogg,.flac" hidden></div>
@@ -10,7 +10,7 @@ registerPage("transcribe", {title:"Transcribe", sub:"Turn the speech in a video 
     <div class="two"><div><label>Language spoken</label><select id="xLang"></select><p class="note" style="margin:4px 0 0">Leave it on “Detect automatically” if unsure. Whisper does not support Igbo.</p></div>
       <div><label>Quality</label><select id="xModel"></select><p class="note" style="margin:4px 0 0" id="xModelNote"></p></div></div>
     <label class="check" style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" id="xTr"> Translate the speech into English</label>
-    <div class="row"><button class="primary" id="xGo" type="button">Turn speech into text</button></div>
+    <div class="row"><button class="primary" id="xGo" type="button">Turn speech into text</button><button id="xCancel" type="button" class="hidden">✕ Cancel</button></div>
     <div class="bar hidden" id="xBar"><i></i></div><div class="note" id="xState"></div><div class="perr hidden" id="xErr"></div></div>
   <div class="card hidden" id="xResult"><h2>2. Check and fix your text</h2>
     <div id="xPlayer" style="margin-bottom:6px"></div><p class="note" style="margin:0">Click a time to hear that part. You can fix any word before saving.</p>
@@ -40,9 +40,9 @@ registerPage("transcribe", {title:"Transcribe", sub:"Turn the speech in a video 
   function modelNote(){ const m = info && info.models.find(m=>m.id===$x("#xModel").value); $x("#xModelNote").textContent = m ? m.note + (m.downloaded ? " Already downloaded." : " First use downloads " + m.size + ".") : ""; }
   $x("#xInstall").onclick = async ()=>{
     const b = $x("#xInstall"), bar = $x("#xInstBar"), s = $x("#xInstState"), err = $x("#xInstErr"); b.disabled = true; err.classList.add("hidden"); bar.classList.remove("hidden"); bar.firstChild.style.width = "6%"; s.textContent = "Installing… this needs internet and can take a few minutes.";
-    try{ await runJob("/api/stt/install", {}, {onTick:j=>{ bar.firstChild.style.width = Math.max(6, Math.round(100*j.done/j.total))+"%"; s.textContent = "Installing… " + lastLine(j); }, onNote:m=>{ s.textContent = m; }});
+    try{ await runJob("/api/stt/install", {}, {cancel:$x("#xInstCancel"), onTick:j=>{ bar.firstChild.style.width = Math.max(6, Math.round(100*j.done/j.total))+"%"; s.textContent = "Installing… " + lastLine(j); }, onNote:m=>{ s.textContent = m; }});
       toast("Transcription is ready."); bar.classList.add("hidden"); s.textContent = ""; await loadStatus();
-    }catch(e){ bar.classList.add("hidden"); s.textContent = ""; const i = e.info || {title:"Setup failed", what:e.message}; err.innerHTML = problemHTML(i); wireProblem(err, i); err.classList.remove("hidden"); }
+    }catch(e){ bar.classList.add("hidden"); s.textContent = ""; if(e.cancelled){ s.textContent = "Cancelled."; b.disabled = false; return; } const i = e.info || {title:"Setup failed", what:e.message}; err.innerHTML = problemHTML(i); wireProblem(err, i); err.classList.remove("hidden"); }
     b.disabled = false;
   };
   ["xLang","xModel","xFmt"].forEach(id=>$x("#"+id).onchange = ()=>{ st.lang = $x("#xLang").value; st.model = $x("#xModel").value; st.fmt = $x("#xFmt").value; saveProj(); modelNote(); });
@@ -70,11 +70,11 @@ registerPage("transcribe", {title:"Transcribe", sub:"Turn the speech in a video 
     err.classList.add("hidden"); bar.classList.remove("hidden"); bar.firstChild.style.width = "3%"; b.disabled = true; state.textContent = "Starting…";
     try{
       const j = await runJob("/api/stt/transcribe", {file, model:st.model, language:st.lang, task: st.translate ? "translate" : "transcribe"},
-        {onTick:j=>{ bar.firstChild.style.width = Math.max(3, Math.round(100*j.done/j.total))+"%"; state.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ state.textContent = m; }});
+        {cancel:$x("#xCancel"), onTick:j=>{ bar.firstChild.style.width = Math.max(3, Math.round(100*j.done/j.total))+"%"; state.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ state.textContent = m; }});
       bar.firstChild.style.width = "100%"; state.textContent = "Done."; setTimeout(()=>bar.classList.add("hidden"), 800);
       curFile = {name:file, folder: sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.folder : ""};
       await openTranscript(j.output); loadStatus(); loadList();
-    }catch(e){ bar.classList.add("hidden"); state.textContent = ""; const i = e.info || {title:"Could not transcribe", what:e.message}; err.innerHTML = problemHTML(i); wireProblem(err, i); err.classList.remove("hidden"); }
+    }catch(e){ bar.classList.add("hidden"); state.textContent = ""; if(e.cancelled){ state.textContent = "Cancelled. Nothing was saved."; b.disabled = false; return; } const i = e.info || {title:"Could not transcribe", what:e.message}; err.innerHTML = problemHTML(i); wireProblem(err, i); err.classList.remove("hidden"); }
     b.disabled = false;
   };
 

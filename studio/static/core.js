@@ -154,32 +154,35 @@ function voicePicker(mount, key){
 // ---- progress panel for any job (voice + video)
 class JobPanel{
   constructor(mount){
-    mount.innerHTML = `<div class="card hidden"><h2>Result</h2><div class="bar"><i></i></div><div class="note state">Starting…</div>
+    mount.innerHTML = `<div class="card hidden"><h2>Result</h2><div class="bar"><i></i></div><div class="row" style="justify-content:space-between;align-items:center"><div class="note state" style="margin:0">Starting…</div><button type="button" class="small cancel hidden">✕ Cancel</button></div>
       <div class="perr hidden"></div><pre class="log hidden"></pre><video controls class="hidden"></video>
       <div class="row hidden save"><a class="btn dl">Download MP4</a><span class="note">Also saved in your Whiteboard Wave Studio folder.</span></div></div>`;
     this.box = $(".card", mount); this.bar = $(".bar i", mount); this.state = $(".state", mount);
-    this.perr = $(".perr", mount); this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount);
+    this.perr = $(".perr", mount); this.log = $(".log", mount); this.video = $("video", mount); this.save = $(".save", mount); this.dl = $(".dl", mount); this.cancel = $(".cancel", mount);
   }
   fail(info){ this.perr.innerHTML = problemHTML(info); wireProblem(this.perr, info); this.perr.classList.remove("hidden"); }
   async run(path, body){
     const b = this.box; this.perr.classList.add("hidden"); b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
     this.log.classList.remove("hidden"); this.log.textContent = ""; this.bar.style.width = "3%"; this.state.textContent = "Working… this can take a few minutes.";
-    let id;
-    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden");
+    let id; const cb = this.cancel; cb.disabled = false; cb.textContent = "✕ Cancel";
+    const hideCancel = ()=>cb.classList.add("hidden");
+    try{ ({id} = await post(path, body)); cb.classList.remove("hidden"); cb.onclick = async ()=>{ cb.disabled = true; cb.textContent = "Stopping…"; this.state.textContent = "Stopping… please wait a moment."; try{ await post("/api/job/cancel", {id}); }catch(_){} }; }
+    catch(e){ this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden");
       this.fail(e.info || (e.data && e.data.running_id ? {title:"Please wait a moment", what:e.message, fix:"Another task is running. When it finishes, press the button again.", details:""} : {title:"Could not start", what:e.message})); return null; }
     while(true){
       await new Promise(r=>setTimeout(r,1200));
-      let j; try{ j = await api("/api/job?id="+id); }catch(e){ this.state.textContent = e.message; return null; }
+      let j; try{ j = await api("/api/job?id="+id); }catch(e){ this.state.textContent = e.message; hideCancel(); return null; }
+      if(j.status==="cancelled"){ hideCancel(); this.bar.style.width = "0%"; this.log.classList.add("hidden"); this.state.textContent = "Cancelled. Nothing was saved."; return null; }
       this.bar.style.width = Math.max(3, Math.round(100*j.done/j.total))+"%";
       this.log.textContent = j.log.join("\n"); this.log.scrollTop = this.log.scrollHeight;
       if(j.status==="done"){
-        this.bar.style.width = "100%"; this.state.textContent = "Done! Your video is ready.";
+        hideCancel(); this.bar.style.width = "100%"; this.state.textContent = "Done! Your video is ready.";
         const url = "/files/out/"+encodeURIComponent(j.output)+"?t="+Date.now();
         this.video.src = url; this.video.classList.remove("hidden");
         this.dl.href = url; this.dl.download = j.output; this.save.classList.remove("hidden");
         return j.output;
       }
-      if(j.status==="error"){ this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden"); this.fail(j.error_info || {title:"Something went wrong", what:j.error}); return null; }
+      if(j.status==="error"){ hideCancel(); this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden"); this.fail(j.error_info || {title:"Something went wrong", what:j.error}); return null; }
     }
   }
 }
@@ -266,13 +269,18 @@ async function runJob(path, body, ui){
   ui = ui || {}; let id;
   try{ ({id} = await post(path, body)); }
   catch(e){ if(e.data && e.data.running_id){ const w = new Error(e.message); w.info = {title:"Please wait a moment", what:e.message, fix:"Watch the progress on the page where you started it, then try again.", details:""}; throw w; } throw e; }
-  while(true){
-    await new Promise(r => setTimeout(r, 1000));
-    const j = await api("/api/job?id=" + id);
-    ui.onTick && ui.onTick(j);
-    if(j.status === "done") return j;
-    if(j.status === "error"){ const err = new Error(j.error || "Something went wrong"); err.info = j.error_info; throw err; }
-  }
+  const cb = ui.cancel;
+  if(cb){ cb.classList.remove("hidden"); cb.disabled = false; cb.textContent = "✕ Cancel"; cb.onclick = async ()=>{ cb.disabled = true; cb.textContent = "Stopping…"; try{ await post("/api/job/cancel", {id}); }catch(_){} }; }
+  try{
+    while(true){
+      await new Promise(r => setTimeout(r, 1000));
+      const j = await api("/api/job?id=" + id);
+      ui.onTick && ui.onTick(j);
+      if(j.status === "done") return j;
+      if(j.status === "cancelled"){ const err = new Error("Cancelled. Nothing was saved."); err.cancelled = true; throw err; }
+      if(j.status === "error"){ const err = new Error(j.error || "Something went wrong"); err.info = j.error_info; throw err; }
+    }
+  } finally { if(cb) cb.classList.add("hidden"); }
 }
 const lastLine = j => ((j.log || []).filter(l => !l.startsWith("$")).slice(-1)[0] || "").slice(0, 110);
 

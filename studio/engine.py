@@ -1,6 +1,6 @@
 """Runs the two engines: Kokoro (voice) and whiteboard-animator (drawing). Used by the server in a background thread."""
 from __future__ import annotations
-import os, re, shutil, subprocess, sys
+import os, re, shutil, signal, subprocess, sys, threading
 from pathlib import Path
 from . import config, friendly
 
@@ -61,24 +61,70 @@ class JobError(Exception):
         super().__init__(message)
         self.info = info or {"title": "Problem", "what": message, "fix": "", "action": None, "details": ""}
 
+class JobCancelled(Exception):
+    """The person pressed Cancel."""
+
+class JobControl:
+    """One per running job: lets the Cancel button stop the programs that job started."""
+    def __init__(self):
+        self.cancelled = False; self.procs: list = []; self.lock = threading.Lock()
+    def check(self):
+        if self.cancelled: raise JobCancelled()
+    def cancel(self):
+        with self.lock:
+            self.cancelled = True
+            procs = list(self.procs)
+        for p in procs: _kill_tree(p)
+
+_CTX = threading.local()   # the job running on this thread
+
+def current_control() -> "JobControl | None":
+    return getattr(_CTX, "ctl", None)
+
+def _kill_tree(p) -> None:
+    """Stops a program and everything it started (ffmpeg, the voice program...)."""
+    try:
+        if p.poll() is not None: return
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, timeout=15)
+        else:
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+    except Exception:
+        try: p.kill()
+        except Exception: pass
+
 def _run(cmd: list[str], log, cwd=None, what: str = "step", voice: str = "", skip: tuple = ()) -> None:
+    ctl = current_control()
+    if ctl: ctl.check()
     log("$ " + " ".join(f'"{c}"' if " " in c else c for c in cmd))
     lines: list[str] = []
     try:
+        extra = {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)} if os.name == "nt" else {"start_new_session": True}
         p = subprocess.Popen(cmd, cwd=cwd, env=_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             text=True, encoding="utf-8", errors="replace")
+                             text=True, encoding="utf-8", errors="replace", **extra)
     except FileNotFoundError as e:
         info = friendly.explain([f"FileNotFoundError: {e}", cmd[0]], what, voice)
         raise JobError(info["title"] + ". " + info["what"], info)
-    for line in p.stdout:
-        line = line.rstrip()
-        if line:
-            log(line)
-            if not (skip and line.startswith(skip)):   # progress ticks must not push the real error text out of the buffer
-                lines.append(line); del lines[:-120]
-    if p.wait() != 0:
+    if ctl:
+        with ctl.lock: ctl.procs.append(p)
+        if ctl.cancelled: _kill_tree(p)
+    try:
+        for line in p.stdout:
+            line = line.rstrip()
+            if line:
+                log(line)
+                if not (skip and line.startswith(skip)):   # progress ticks must not push the real error text out of the buffer
+                    lines.append(line); del lines[:-120]
+        rc = p.wait()
+    finally:
+        if ctl:
+            with ctl.lock:
+                if p in ctl.procs: ctl.procs.remove(p)
+    if ctl and ctl.cancelled:
+        raise JobCancelled()
+    if rc != 0:
         info = friendly.explain(lines, what, voice)
-        info["details"] = f"(exit code {p.returncode})\n" + info["details"]
+        info["details"] = f"(exit code {rc})\n" + info["details"]
         raise JobError(info["title"] + ". " + info["what"], info)
 
 def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict, log) -> None:

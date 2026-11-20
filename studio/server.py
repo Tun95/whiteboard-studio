@@ -1,6 +1,6 @@
 """Tiny local web server: the app window is a web page served only to this computer (127.0.0.1)."""
 from __future__ import annotations
-import json, mimetypes, socket, threading, time, traceback, uuid, webbrowser
+import json, mimetypes, shutil, socket, threading, time, traceback, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -19,6 +19,7 @@ class State:
         self.caps: dict | None = None
         self.setup = {"state": "checking", "job": None, "missing": []}
         self.jobs: dict[str, dict] = {}
+        self.controls: dict[str, engine.JobControl] = {}
         self.lock = threading.Lock()
         threading.Thread(target=self._probe, daemon=True).start()
 
@@ -60,6 +61,12 @@ class State:
             self.project = config._make_project(config.project_path(name)); self.project_name = self.project.name
             config.set_active_project(self.project_name)
 
+    def cancel_job(self, jid: str) -> bool:
+        job = self.jobs.get(jid); ctl = self.controls.get(jid)
+        if not job or not ctl or job["status"] != "running":
+            return False
+        job["cancelling"] = True; ctl.cancel(); return True
+
     def refresh_caps(self):
         self.caps = engine.capabilities(self.settings)
 
@@ -74,16 +81,34 @@ class State:
             jid = uuid.uuid4().hex[:10]
             job = {"id": jid, "status": "running", "log": [], "done": 0, "total": max(1, total), "output": None, "error": None, "error_info": None, "title": title}
             self.jobs[jid] = job
+        ctl = engine.JobControl(); self.controls[jid] = ctl
+        pr = self.project
+        watched = [pr / d for d in ("out", "audio", "transcripts")]   # only files the job itself makes
+        before = {p: {x.name for x in p.iterdir()} for p in watched if p.is_dir()}
         def log(line: str):
-            job["log"].append(line); del job["log"][:-400]
+            ctl.check(); job["log"].append(line); del job["log"][:-400]
         def step():
-            job["done"] += 1
+            ctl.check(); job["done"] += 1
+        def undo():   # remove half-made files from the cancelled job
+            for d, names in before.items():
+                for x in d.iterdir():
+                    if x.name not in names:
+                        try: shutil.rmtree(x) if x.is_dir() else x.unlink()
+                        except OSError: pass
         def work():
+            engine._CTX.ctl = ctl
             try:
                 out = fn(log, step)
+                if ctl.cancelled: raise engine.JobCancelled()
                 job["output"] = out.name if out else None
                 job["status"] = "done"
+            except engine.JobCancelled:
+                undo(); job["log"].append("Cancelled."); job["status"] = "cancelled"
             except engine.JobError as e:
+                if ctl.cancelled: undo(); job["status"] = "cancelled"; return
+                job["error"] = str(e); job["error_info"] = e.info; job["status"] = "error"
+            except Exception as e:
+                if ctl.cancelled: undo(); job["status"] = "cancelled"; return
                 job["error"] = str(e); job["error_info"] = e.info; job["status"] = "error"
             except Exception as e:
                 tb = traceback.format_exc(); log(tb)
@@ -256,6 +281,8 @@ class Handler(BaseHTTPRequestHandler):
                                                   "installing " + friendly.LANG_NAMES.get(lang, lang) + " voice support")})
             if p == "/api/delete":
                 engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
+            if p == "/api/job/cancel":
+                return self._json({"ok": S.cancel_job(str(body.get("id", "")))})
             if p == "/api/projects/folder":
                 try:
                     with S.lock:
