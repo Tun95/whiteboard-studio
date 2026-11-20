@@ -10,11 +10,11 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
     {headline:"Download it *free* today", sub:"", shot:"", side:"left", box:null, pullout:false, effect:"confetti", motion:"zoom", voice:"", seconds:5, badge:true}]});
   const st = ps("ads", {pack:"", step:0, view:"list", makeVoice:true, preview:false, style:"energetic", sel:0});
   const d = App.proj.adDraft = Object.assign(blank(), App.proj.adDraft || {});
-  let lib = {images:[], audio:[], packs:[]};
+  let lib = {images:[], screenshots:[], audio:[], packs:[]};
   el.innerHTML = `<div id="aList"></div><div id="aBuild" class="hidden"></div>`;
   const job = {};
 
-  const imgUrl = n => "/files/images/" + encodeURIComponent(n);
+  const imgUrl = n => "/files/" + ((lib.screenshots||[]).some(i=>i.name===n) ? "screenshots" : "images") + "/" + encodeURIComponent(n);
   const save = () => saveProj();
   async function loadLib(){ lib = await api("/api/library"); }
 
@@ -122,18 +122,18 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
   }
 
   function step2(box){
-    const imgs = lib.images;
+    const imgs = lib.screenshots;
     box.innerHTML = `<div class="card"><h2>2. Your screenshots</h2>
       <p class="note" style="margin-top:0">Add screenshots from your app. Take them on your phone and send them to this computer. Tall pictures look best.</p>
       <div class="shotgrid">${imgs.map(i=>`<div class="shotc"><img src="${imgUrl(i.name)}" alt=""><span>${esc(i.name)}</span><button type="button" class="del" data-del="${esc(i.name)}">Remove</button></div>`).join("") || '<div class="note">No pictures yet.</div>'}</div>
       <div class="row" style="margin-top:12px"><button class="primary" id="aAddShots" type="button">＋ Add screenshots</button><input type="file" id="aShots" accept=".png,.jpg,.jpeg" multiple hidden></div>
-      <div class="note" style="margin-top:8px">These pictures are shared with the Editor tab.</div></div>`;
+      <div class="note" style="margin-top:8px">These screenshots are only used for ads in this project. Your Editor pictures are kept separate.</div></div>`;
     $("#aAddShots",box).onclick = ()=>$("#aShots",box).click();
     $("#aShots",box).onchange = async e=>{ const fs=[...e.target.files]; e.target.value="";
-      for(const f of fs){ try{ await upload("image", f); }catch(err){ reportError(err); } }
+      for(const f of fs){ try{ await upload("shot", f); }catch(err){ reportError(err); } }
       await loadLib(); step2(box); };
     box.onclick = async e=>{ const b=e.target.closest("[data-del]"); if(!b) return;
-      if(await deleteMedia("images", b.dataset.del)){ (d.scenes||[]).forEach(s=>{ if(s.shot===b.dataset.del){ s.shot=""; s.box=null; } }); save(); await loadLib(); step2(box); } };
+      if(await deleteMedia("screenshots", b.dataset.del)){ (d.scenes||[]).forEach(s=>{ if(s.shot===b.dataset.del){ s.shot=""; s.box=null; } }); save(); await loadLib(); step2(box); } };
   }
 
   function step3(box){
@@ -149,8 +149,8 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
         <div class="note">Put a star on each side of a word to make it stand out in colour: <b>*free*</b></div>
         <label>Smaller words (optional)</label><input type="text" id="sSub" maxlength="80" value="${esc(s.sub||"")}">
         <label>Which screenshot goes on the phone?</label>
-        <div class="shotpick"><button type="button" class="${!s.shot?'on':''}" data-shot="">No phone</button>${lib.images.map(i=>`<button type="button" class="${s.shot===i.name?'on':''}" data-shot="${esc(i.name)}" title="${esc(i.name)}"><img src="${imgUrl(i.name)}" alt=""></button>`).join("")}</div>
-        ${lib.images.length?'':'<div class="note">Add screenshots in step 2 first.</div>'}
+        <div class="shotpick"><button type="button" class="${!s.shot?'on':''}" data-shot="">No phone</button>${lib.screenshots.map(i=>`<button type="button" class="${s.shot===i.name?'on':''}" data-shot="${esc(i.name)}" title="${esc(i.name)}"><img src="${imgUrl(i.name)}" alt=""></button>`).join("")}</div>
+        ${lib.screenshots.length?'':'<div class="note">Add screenshots in step 2 first.</div>'}
         ${s.shot?`<div class="two"><div><label>Where is the phone?</label><select id="sSide" ${tall?'disabled':''}>${tall?'<option>In the middle (tall videos)</option>':opts([["right","On the right"],["left","On the left"],["center","In the middle"]],s.side)}</select></div>
         <div><label>Pull a part out of the phone?</label><select id="sPull"><option value="0" ${!s.pullout?'selected':''}>No, just glow</option><option value="1" ${s.pullout?'selected':''}>Yes, float it out</option></select></div></div>
         <label>Show off one part of the screen (optional)</label>

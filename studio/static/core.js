@@ -267,3 +267,50 @@ async function runJob(path, body, ui){
   }
 }
 const lastLine = j => ((j.log || []).filter(l => !l.startsWith("$")).slice(-1)[0] || "").slice(0, 110);
+
+// ---- projects (like folders in a video editor: each keeps its own files)
+async function flushProject(){ clearTimeout(_saveT); try{ await post("/api/project", App.proj); }catch(_){} }
+async function projectAction(path, body){
+  await flushProject();
+  const r = await post(path, body); return r;
+}
+function initProjects(name){
+  $("#projName").textContent = name;
+  const dlg = $("#projDlg"), list = $("#projList");
+  const when = t => { const d = new Date(t*1000); return d.toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}); };
+  async function render(){
+    const r = await api("/api/projects");
+    list.innerHTML = r.projects.map(p=>`<div class="pack ${p.name===r.active?'sel':''}" data-n="${esc(p.name)}">
+      <div style="flex:1;min-width:0"><b>${esc(p.name)}</b>${p.name===r.active?' <span class="tag">open now</span>':''}
+        <div class="note">${p.videos} video${p.videos===1?'':'s'} made · ${p.files} file${p.files===1?'':'s'} · ${p.ads} ad${p.ads===1?'':'s'} · changed ${when(p.modified)}</div></div>
+      ${p.name===r.active?'':`<button class="primary small" data-open="${esc(p.name)}" type="button">Open</button>`}
+      <button class="small" data-ren="${esc(p.name)}" type="button">Rename</button>
+      ${p.name===r.active?'':`<button class="small del" data-delp="${esc(p.name)}" type="button">Delete</button>`}</div>`).join("");
+  }
+  const reopen = () => { location.hash = location.hash || "#home"; location.reload(); };
+  $("#projBtn").onclick = async ()=>{ await render(); dlg.showModal(); };
+  $("#projClose").onclick = ()=>dlg.close();
+  $("#projAdd").onclick = async ()=>{ const n = $("#projNew").value.trim();
+    if(!n){ toast("Please type a name for the project.", true); return; }
+    try{ await projectAction("/api/projects/create", {name:n}); reopen(); }catch(e){ reportError(e); } };
+  $("#projNew").onkeydown = e=>{ if(e.key==="Enter") $("#projAdd").click(); };
+  list.onclick = async e=>{
+    const o = e.target.closest("[data-open]"), rn = e.target.closest("[data-ren]"), dl = e.target.closest("[data-delp]");
+    try{
+      if(o){ await projectAction("/api/projects/switch", {name:o.dataset.open}); reopen(); }
+      else if(rn){ const v = await askName("Rename project", rn.dataset.ren); if(v && v!==rn.dataset.ren){ await projectAction("/api/projects/rename", {name:rn.dataset.ren, new:v}); const a = await api("/api/projects"); $("#projName").textContent = a.active; await render(); toast("Renamed."); } }
+      else if(dl){ const n = dl.dataset.delp;
+        if(await confirmBox("Delete this project?", `“${n}” and every picture, video, audio file and ad inside it will be removed from your computer. This cannot be undone.`, "Delete project")){
+          await post("/api/projects/delete", {name:n}); await render(); toast("Deleted "+n); } }
+    }catch(err){ reportError(err); } };
+}
+function askName(title, cur){
+  return new Promise(res=>{
+    const d = document.createElement("dialog"); document.body.appendChild(d);
+    d.innerHTML = `<h3>${esc(title)}</h3><input type="text" maxlength="60" value="${esc(cur||"")}" style="margin:8px 0"><div class="row" style="justify-content:flex-end"><button data-r="0" type="button">Cancel</button><button class="primary" data-r="1" type="button">Save</button></div>`;
+    const inp = d.querySelector("input"); const done = v => { d.close(); res(v); };
+    d.onclick = e=>{ const b = e.target.closest("button"); if(b) done(b.dataset.r==="1" ? inp.value.trim() : null); };
+    inp.onkeydown = e=>{ if(e.key==="Enter") done(inp.value.trim()); };
+    d.oncancel = ()=>res(null); d.onclose = ()=>d.remove(); d.showModal(); inp.focus(); inp.select();
+  });
+}

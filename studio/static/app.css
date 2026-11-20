@@ -240,3 +240,8 @@ button.del{color:var(--bad)}button.small{padding:4px 10px;font-size:13px}
 .seglist{max-height:420px;overflow:auto;margin:8px 0}
 .stat{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dlrow a.btn{text-decoration:none}
+/* project switcher */
+.projbtn{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l i" "n i";align-items:center;text-align:left;margin:0 0 12px;padding:8px 12px;border-radius:10px;border:1px solid #ffffff2a;background:#ffffff12;color:#fff;gap:0 8px}
+.projbtn:hover{border-color:#19a7c4;background:#ffffff1c}.projbtn .pl{grid-area:l;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#7fd3e6}
+.projbtn b{grid-area:n;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projbtn i{grid-area:i;font-style:normal;color:#7fd3e6}
+#projList .pack{cursor:default}

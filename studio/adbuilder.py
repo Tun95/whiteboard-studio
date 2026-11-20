@@ -86,7 +86,7 @@ def _build(project: Path, spec: dict, name: str, root: Path) -> str:
     # copy pictures the ad uses
     def bring(ref, dest_folder):
         src = None
-        for folder in ("images", "media", "audio"):
+        for folder in ("screenshots", "images", "media", "audio"):
             p = project / folder / _safe(ref)
             if p.is_file(): src = p; break
         if not src:

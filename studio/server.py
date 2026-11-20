@@ -9,13 +9,13 @@ from . import __version__, adbuilder, config, engine, friendly, stt, voices
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
 KINDS = {"image": ({".png", ".jpg", ".jpeg"}, "images"), "overlay": ({".png", ".jpg", ".jpeg", ".gif", ".webp"}, "images"), "audio": ({".wav", ".mp3", ".m4a", ".ogg", ".flac"}, "audio"),
-         "video": ({".mp4", ".mov", ".mkv", ".webm"}, "media"), "adpack": ({".zip"}, "work")}
+         "video": ({".mp4", ".mov", ".mkv", ".webm"}, "media"), "adpack": ({".zip"}, "work"), "shot": ({".png", ".jpg", ".jpeg"}, "screenshots")}
 
 class State:
     def __init__(self):
         self.settings = config.load_settings()
         self.project = config.project_dir()
-        (self.project / "media").mkdir(exist_ok=True)
+        self.project_name = self.project.name
         self.caps: dict | None = None
         self.setup = {"state": "checking", "job": None, "missing": []}
         self.jobs: dict[str, dict] = {}
@@ -51,6 +51,14 @@ class State:
             self.setup = {"state": "ready" if j["status"] == "done" else "failed", "job": jid, "missing": [],
                           "info": j.get("error_info")}
         threading.Thread(target=watch, daemon=True).start()
+
+    def switch_project(self, name: str) -> None:
+        with self.lock:
+            busy = next((j for j in self.jobs.values() if j["status"] == "running"), None)
+            if busy:
+                raise ValueError(f"Something is still running: {busy.get('title', 'a job')}. Wait for it to finish before changing project.")
+            self.project = config._make_project(config.project_path(name)); self.project_name = self.project.name
+            config.set_active_project(self.project_name)
 
     def refresh_caps(self):
         self.caps = engine.capabilities(self.settings)
@@ -94,6 +102,7 @@ def library() -> dict:
         return [{"name": p.name, "size": p.stat().st_size, "folder": folder} for p in items]
     return {"videos": files("out", {".mp4"}), "uploads": files("media", KINDS["video"][0]),
             "audio": files("audio", KINDS["audio"][0]), "images": files("images", KINDS["overlay"][0]),
+            "screenshots": files("screenshots", KINDS["shot"][0]),
             "packs": engine.list_ad_packs(pr), "documents": stt.list_transcripts(pr)["documents"]}
 
 class Handler(BaseHTTPRequestHandler):
@@ -154,7 +163,9 @@ class Handler(BaseHTTPRequestHandler):
             s = STATE.settings
             return self._json({"version": __version__, "caps": STATE.caps, "voices": voices.library(), "styles": engine.STYLES,
                                "donate_url": s.get("donate_url", ""), "donate_text": s.get("donate_text", ""),
-                               "data_dir": str(config.data_dir())})
+                               "data_dir": str(config.data_dir()), "project": STATE.project_name})
+        if p == "/api/projects":
+            return self._json({"active": STATE.project_name, "projects": config.list_projects()})
         if p == "/api/setup": return self._json(STATE.setup)
         if p == "/api/project":
             f = STATE.project / "project.json"; data = {}
@@ -179,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(job or {"error": "unknown job"}, 200 if job else 404)
         if p.startswith("/files/"):
             parts = p[len("/files/"):].split("/", 1)
-            if len(parts) == 2 and parts[0] in ("images", "audio", "out", "media", "transcripts"):
+            if len(parts) == 2 and parts[0] in ("images", "screenshots", "audio", "out", "media", "transcripts"):
                 return self._file(STATE.project / parts[0] / engine.safe_name(parts[1]))
             if len(parts) == 2 and parts[0] == "samples":
                 return self._file(config.data_dir() / "voice-samples" / engine.safe_name(parts[1]))
@@ -235,6 +246,22 @@ class Handler(BaseHTTPRequestHandler):
                                                   "installing " + friendly.LANG_NAMES.get(lang, lang) + " voice support")})
             if p == "/api/delete":
                 engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
+            if p in ("/api/projects/create", "/api/projects/switch", "/api/projects/rename", "/api/projects/delete"):
+                try:
+                    if p.endswith("create"):
+                        n = config.create_project(body.get("name", "")); S.switch_project(n)
+                    elif p.endswith("switch"):
+                        S.switch_project(body.get("name", "")); n = S.project_name
+                    elif p.endswith("rename"):
+                        old = body.get("name", ""); n = config.rename_project(old, body.get("new", ""))
+                        if old == S.project_name or config.clean_project_name(old) == S.project_name:
+                            S.project = config.project_path(n); S.project_name = n; config.set_active_project(n)
+                    else:
+                        if config.clean_project_name(body.get("name", "")) == S.project_name:
+                            raise ValueError("This project is open right now. Open another project first, then delete this one.")
+                        config.delete_project(body.get("name", "")); n = S.project_name
+                    return self._json({"ok": True, "name": n, "active": S.project_name})
+                except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
             if p == "/api/ads/save":
                 try: return self._json({"name": adbuilder.build(S.project, body)})
                 except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)

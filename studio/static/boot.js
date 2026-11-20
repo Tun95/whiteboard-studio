@@ -9,7 +9,7 @@ async function boot(){
   const s = await api("/api/state");
   Object.assign(App, {caps:s.caps, voices:s.voices, styles:s.styles});
   App.proj = await api("/api/project");
-  $("#ver").textContent = "v"+s.version; $("#dataDir").textContent = s.data_dir; $("#donateText").textContent = s.donate_text;
+  initProjects(s.project || ""); $("#ver").textContent = "v"+s.version; $("#dataDir").textContent = s.data_dir; $("#donateText").textContent = s.donate_text;
   if(s.donate_url){ $("#donateLink").href = s.donate_url; $("#donateLink").classList.remove("hidden"); } else $("#donateSoon").classList.remove("hidden");
   $("#nav").innerHTML = App.order.map(id=>`<button class="navbtn" data-id="${id}"><span class="ico">${icon(App.pages[id].ic)}</span>${esc(App.pages[id].title)}</button>`).join("");
   $("#nav").onclick = e=>{ const b=e.target.closest(".navbtn"); if(b) go(b.dataset.id); };

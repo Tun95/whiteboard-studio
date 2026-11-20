@@ -551,7 +551,7 @@ def install_lang(lang: str, settings: dict, log, step=lambda: None, part: str = 
     log("Done. You can listen to the voice again now.")
 
 # ----------------------------------------------------------------------------- deleting files
-FOLDERS = {"out": "out", "media": "media", "audio": "audio", "images": "images", "transcripts": "transcripts"}
+FOLDERS = {"out": "out", "media": "media", "audio": "audio", "images": "images", "screenshots": "screenshots", "transcripts": "transcripts"}
 
 def delete_file(project: Path, folder: str, name: str) -> None:
     if folder not in FOLDERS:
