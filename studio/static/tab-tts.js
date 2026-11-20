@@ -14,8 +14,8 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
     <details style="margin-top:10px"><summary class="note" style="cursor:pointer">Fix how a word is pronounced (optional)</summary>
       <textarea id="tFix" rows="3" placeholder="One fix per line, like:&#10;Tunji=Toon-jee&#10;Nginx=engine-ex"></textarea></details>
     <label>File name</label><input type="text" id="tName" placeholder="my-audio">
-    <div class="warn hidden" id="tWarn">Voices are not available on this computer yet (Kokoro is missing), so audio cannot be made.</div>
-    <div class="row"><button class="primary" id="tMake" type="button">Make audio</button><span class="note">Your audio is saved as WAV, and also as MP3 when FFmpeg is available.</span></div>
+    <div class="warn hidden" id="tWarn">The AI voice is not ready on this computer yet, so audio cannot be made. Open the app again with internet on, or see the message at the top of the page.</div>
+    <div class="row"><button class="primary" id="tMake" type="button">Make audio</button><span class="note">Your audio is saved as WAV, and also as MP3 when the video maker is ready.</span></div>
   </div>
   <div class="card hidden" id="tOut"><h2>Your audio</h2><div class="bar"><i></i></div><div class="note" id="tState"></div><div class="perr hidden" id="tErr"></div>
     <audio controls class="hidden" id="tAudio" style="width:100%;margin-top:10px"></audio><div class="row dlrow hidden" id="tDl"></div>
