@@ -192,3 +192,42 @@ dialog{max-height:calc(100vh - 28px);overflow:auto}dialog pre.log{max-height:64p
 .ed-shape select{max-width:none;width:178px;text-overflow:ellipsis}
 @media (max-width:1500px){.ed-shape select{width:150px;max-width:none}}
 @media (max-width:1100px){.ed-shape select{width:120px}}
+/* ---- App ads guided builder ---- */
+.adsteps{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:10px}
+.adstep{display:flex;align-items:center;gap:8px;border-color:transparent;background:transparent;padding:7px 12px;color:var(--muted)}
+.adstep i{font-style:normal;width:22px;height:22px;border-radius:99px;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--line);color:var(--ink)}
+.adstep.on{background:var(--soft);color:var(--ink);font-weight:700;border-color:var(--brand)}.adstep.on i{background:var(--brand);color:var(--brand-ink)}
+.adstep.done i{background:var(--ok);color:#fff}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.sw{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 10px;min-width:78px;font-size:13px}
+.sw span{display:block;width:44px;height:30px;border-radius:8px;border:1px solid var(--line)}
+.sw.wide{flex-direction:row;min-width:0;padding:8px 14px}.sw.on{border:2px solid var(--brand);background:var(--soft);font-weight:700}
+.sw .shp{border-radius:4px;border:2px solid var(--ink);background:transparent;height:22px;width:38px}.sw .shp.t{width:16px;height:30px}
+.shotgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.shotc{border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.shotc img{width:100%;height:170px;object-fit:contain;border-radius:6px;background:var(--soft)}
+.shotc span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adscenes{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.adscenes{grid-template-columns:1fr}}
+.adsc{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;cursor:pointer}
+.adsc i{font-style:normal;font-weight:700;color:var(--brand)}.adsc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.adsc.on{border-color:var(--brand);background:var(--soft)}
+.adprev{position:relative;width:100%;max-width:420px;aspect-ratio:16/9;border-radius:12px;overflow:hidden;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;gap:14px;padding:10px;color:#fff}
+.adprev.tall{aspect-ratio:9/16;max-width:220px;flex-direction:column}
+.adprev.look-purple{background:linear-gradient(135deg,#2b1055,#7c3aed)}.adprev.look-ocean{background:linear-gradient(135deg,#06223f,#0e7490)}
+.adprev.look-sunset{background:linear-gradient(135deg,#4a1030,#f97316)}.adprev.look-forest{background:linear-gradient(135deg,#052e1a,#16a34a)}
+.adprev.look-night{background:linear-gradient(135deg,#0b0b12,#2a2f4a)}.adprev.look-light{background:linear-gradient(135deg,#e8eefc,#fff);color:#14213d}
+.adprev .pcap{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}.adprev .pcap.center{align-items:center;text-align:center}
+.adprev .p1{font-weight:800;font-size:17px;line-height:1.15}.adprev .p1 b{color:#fbbf24}.adprev .p2{font-size:12px;opacity:.9}.adprev .p2 b{color:#fbbf24}
+.adprev .p3{font-size:10px;background:#000a;color:#fff;border-radius:6px;padding:3px 8px;width:max-content}
+.adprev .pph{width:70px;aspect-ratio:9/18;border:3px solid #333;border-radius:12px;overflow:hidden;flex:none;background:#000}.adprev .pph img{width:100%;height:100%;object-fit:cover}
+.adprev.tall .pph{width:84px}
+.adprev:has(.pph.left){flex-direction:row}.adprev:has(.pcap.left) .pph{order:-1}
+.shotpick{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+.shotpick button{padding:4px;min-width:64px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.shotpick button img{width:46px;height:80px;object-fit:cover;border-radius:5px}.shotpick button.on{border:2px solid var(--brand);background:var(--soft)}
+.boxwrap{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+.shotbox{position:relative;width:200px;cursor:crosshair;user-select:none;touch-action:none;border:1px solid var(--line);border-radius:8px;overflow:hidden;line-height:0}
+.shotbox img{width:100%;display:block}.shotbox .bx{position:absolute;border:3px solid #f59e0b;background:#f59e0b33;border-radius:4px;pointer-events:none}
+.adsum{margin:8px 0;padding-left:20px}.adsum li{margin-bottom:4px}
+button.del{color:var(--bad)}button.small{padding:4px 10px;font-size:13px}

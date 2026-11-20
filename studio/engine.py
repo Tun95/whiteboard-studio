@@ -222,7 +222,7 @@ def list_ad_packs(project: Path) -> list[dict]:
     packs = []
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
         if (d / "ad.json").is_file():
-            packs.append({"name": d.name, "has_preview": (d / "ad-preview.json").is_file(),
+            packs.append({"name": d.name, "editable": (d / "builder.json").is_file(), "has_preview": (d / "ad-preview.json").is_file(),
                           "has_script": (d / "0-scripts" / "ad-voice-script.txt").is_file(),
                           "has_voice": any((d / "2-audio").glob("scene-*.wav")) if (d / "2-audio").is_dir() else False})
     return packs

@@ -620,7 +620,7 @@ registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos
   $("#edExportBtn",el).onclick = ()=>{ P.pause(); ["fade_in","fade_out","size","name"].forEach(k=>{}); $("#eFi",el).value=st.fade_in; $("#eFo",el).value=st.fade_out; $("#eSize",el).value=st.size; $("#eName",el).value=st.name; check(); dlg.showModal(); };
   $("#eClose",el).onclick = ()=>dlg.close();
   function check(){
-    const msg = !st.clips.length ? "Add at least one video clip to the timeline first." : (App.caps && !App.caps.ffmpeg ? "FFmpeg is missing. See the badges on the left." : "");
+    const msg = !st.clips.length ? "Add at least one video clip to the timeline first." : (App.caps && !App.caps.ffmpeg ? "The video maker part of the app is missing. See the badges on the left." : "");
     const w = $("#eProblem",el); w.textContent = msg; w.classList.toggle("hidden", !msg); $("#eMake",el).disabled = !!msg || $("#eMake",el).dataset.busy==="1";
     $("#eTotal",el).textContent = st.clips.length ? `Total length: about ${fmt(P.total)} seconds` : "";
   }

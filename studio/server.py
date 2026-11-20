@@ -4,7 +4,7 @@ import json, mimetypes, socket, threading, time, traceback, uuid, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
-from . import __version__, config, engine, friendly, voices
+from . import __version__, adbuilder, config, engine, friendly, voices
 
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
@@ -166,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/media/info":
             try: return self._json(engine.media_info(engine._find_media(STATE.project, (q.get("file") or [""])[0])))
             except engine.JobError as e: return self._json({"error": str(e)}, 400)
+        if p == "/api/ads/spec":
+            try: return self._json(adbuilder.load(STATE.project, (q.get("name") or [""])[0]))
+            except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
         if p == "/api/job":
             job = STATE.jobs.get((q.get("id") or [""])[0])
             return self._json(job or {"error": "unknown job"}, 200 if job else 404)
@@ -217,6 +220,9 @@ class Handler(BaseHTTPRequestHandler):
                                                   "installing " + friendly.LANG_NAMES.get(lang, lang) + " voice support")})
             if p == "/api/delete":
                 engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
+            if p == "/api/ads/save":
+                try: return self._json({"name": adbuilder.build(S.project, body)})
+                except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
             if p == "/api/ads/delete":
                 engine.delete_pack(S.project, str(body.get("name", ""))); return self._json({"ok": True})
             if p == "/api/voice/clear":

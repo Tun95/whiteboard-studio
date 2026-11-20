@@ -3,7 +3,7 @@ function chips(){
   const c = App.caps, box = $("#chips");
   if(!c){ box.innerHTML = '<span class="chip">Checking tools…</span>'; return; }
   const item = (ok,t)=>`<span class="chip ${ok?'ok':'bad'}">${ok?'✓':'✗'} ${t}</span>`;
-  box.innerHTML = item(c.animator,"Animator")+item(c.ffmpeg,"FFmpeg")+item(c.kokoro,"Voice (Kokoro)");
+  box.innerHTML = item(c.animator,"Drawing")+item(c.ffmpeg,"Video maker")+item(c.kokoro,"AI voice");
 }
 async function boot(){
   const s = await api("/api/state");

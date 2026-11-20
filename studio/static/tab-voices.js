@@ -6,7 +6,7 @@ registerPage("voices", {title:"Voices", sub:"Listen to every AI voice, then pick
     <label style="margin-top:0">Try your own sentence (optional)</label>
     <input type="text" id="vqText" placeholder="Leave empty to use a standard sample sentence in each voice’s language">
     <p class="note" style="margin:8px 0 0">The first time you listen to a voice it takes a few seconds to make the sample. After that it plays instantly. <b>Default voice:</b> <span id="vqDefault"></span> <button class="small ghost" id="vqClear" type="button">Delete saved samples</button></p>
-    <div class="warn hidden" id="vqWarn">Kokoro is not installed here, so previews are off. You can still choose a default voice.</div></div>
+    <div class="warn hidden" id="vqWarn">The AI voice is not ready on this computer yet, so listening is off. You can still choose a default voice.</div></div>
     <div class="vgrid" id="vqGrid"></div>`;
   const groups = [...new Set(App.voices.map(v=>v.group))];
   $("#vqGroup",el).innerHTML += groups.map(g=>`<option>${esc(g)}</option>`).join("");

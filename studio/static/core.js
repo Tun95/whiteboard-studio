@@ -113,7 +113,7 @@ function voiceOptions(sel, current){
   const groups = {};
   App.voices.forEach(v => (groups[v.group] = groups[v.group] || []).push(v));
   sel.innerHTML = Object.entries(groups).map(([g,list]) =>
-    `<optgroup label="${esc(g)}">${list.map(v=>`<option value="${v.id}">${esc(v.name)} (${v.id})</option>`).join("")}</optgroup>`).join("");
+    `<optgroup label="${esc(g)}">${list.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join("")}</optgroup>`).join("");
   sel.value = current || defaultVoice();
   if(sel.value !== (current || defaultVoice())) sel.value = "am_liam";
 }
@@ -215,7 +215,7 @@ function sceneEditor({mount, key, noun, extra}){
           <textarea data-f="text" placeholder="Type the words for this ${noun}…">${esc(s.text||"")}</textarea>
           <label>Voice</label>
           <select data-f="audio_mode"><option value="none" ${s.audio_mode=='none'?'selected':''}>No voice</option>
-            <option value="generate" ${s.audio_mode=='generate'?'selected':''}>Make voice from the words (Kokoro)</option>
+            <option value="generate" ${s.audio_mode=='generate'?'selected':''}>Make an AI voice from the words</option>
             <option value="upload" ${s.audio_mode=='upload'?'selected':''}>Use my own recording</option></select>
           ${s.audio_mode=='upload' ? `<div class="row"><button class="small" data-act="audio">${s.audio?'Replace audio':'Choose audio file'}</button><span class="note">${esc(s.audio||'No file yet')}</span><input type="file" accept=".wav,.mp3,.m4a,.ogg,.flac" hidden data-aud></div>` : ''}
           ${extra ? extra.render(s,i) : ""}
