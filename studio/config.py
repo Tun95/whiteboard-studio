@@ -29,9 +29,58 @@ def clean_project_name(name: str) -> str:
     n = "".join("_" if (c in _BAD or ord(c) < 32) else c for c in str(name or "")).strip(" .")
     return n[:60]
 
+def save_setting(key: str, value) -> None:
+    f = data_dir() / "settings.json"
+    try: cur = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError): cur = dict(DEFAULT_SETTINGS)
+    cur[key] = value
+    f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+
+def default_projects_dir() -> Path:
+    return data_dir() / "projects"
+
 def projects_dir() -> Path:
-    d = data_dir() / "projects"; d.mkdir(parents=True, exist_ok=True)
+    """Where the projects are saved. The person can choose this folder (settings.json: projects_dir); if it cannot be used we fall back to the normal one."""
+    chosen = str(load_settings().get("projects_dir") or "").strip()
+    if chosen:
+        try:
+            d = Path(chosen); d.mkdir(parents=True, exist_ok=True)
+            if os.access(d, os.W_OK): return d
+        except OSError:
+            pass
+    d = default_projects_dir(); d.mkdir(parents=True, exist_ok=True)
     return d
+
+def set_projects_folder(path: str, move: bool) -> str:
+    """Changes where projects are saved. With move=True the existing projects are copied there first (originals removed only after a full copy)."""
+    import shutil
+    raw = str(path or "").strip().strip('"')
+    if not raw:
+        raise ValueError("Please choose a folder.")
+    new = Path(raw).expanduser()
+    if not new.is_absolute():
+        raise ValueError("Please type the full folder path, for example D:\\My Videos, or press Browse.")
+    try:
+        new.mkdir(parents=True, exist_ok=True)
+        t = new / ".wws-test"; t.write_text("x"); t.unlink()
+    except OSError:
+        raise ValueError("That folder cannot be used. It may be read-only or on a drive that is not connected. Choose another folder.")
+    old = projects_dir()
+    if new.resolve() == old.resolve():
+        return str(new)
+    if str(new.resolve()).startswith(str(old.resolve()) + os.sep):
+        raise ValueError("Choose a folder outside your current projects folder.")
+    if move:
+        for d in [p for p in old.iterdir() if p.is_dir()]:
+            dest = new / d.name
+            if dest.exists():
+                raise ValueError(f"The new folder already has a project called “{d.name}”. Choose an empty folder.")
+        for d in [p for p in old.iterdir() if p.is_dir()]:
+            shutil.copytree(d, new / d.name)
+        for d in [p for p in old.iterdir() if p.is_dir()]:
+            shutil.rmtree(d, ignore_errors=True)
+    save_setting("projects_dir", str(new))
+    return str(new)
 
 def _make_project(p: Path) -> Path:
     for sub in SUBFOLDERS:

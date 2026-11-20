@@ -165,7 +165,15 @@ class Handler(BaseHTTPRequestHandler):
                                "donate_url": s.get("donate_url", ""), "donate_text": s.get("donate_text", ""),
                                "data_dir": str(config.data_dir()), "project": STATE.project_name})
         if p == "/api/projects":
-            return self._json({"active": STATE.project_name, "projects": config.list_projects()})
+            return self._json({"active": STATE.project_name, "projects": config.list_projects(), "folder": str(config.projects_dir())})
+        if p == "/api/pick-folder":
+            try:
+                import tkinter, tkinter.filedialog as fd
+                root = tkinter.Tk(); root.withdraw(); root.attributes("-topmost", True)
+                chosen = fd.askdirectory(title="Choose where to save your projects"); root.destroy()
+                return self._json({"path": chosen or ""})
+            except Exception:
+                return self._json({"error": "The folder picker is not available here. Type the folder path instead."}, 400)
         if p == "/api/setup": return self._json(STATE.setup)
         if p == "/api/project":
             f = STATE.project / "project.json"; data = {}
@@ -192,6 +200,8 @@ class Handler(BaseHTTPRequestHandler):
             parts = p[len("/files/"):].split("/", 1)
             if len(parts) == 2 and parts[0] in ("images", "screenshots", "audio", "out", "media", "transcripts"):
                 return self._file(STATE.project / parts[0] / engine.safe_name(parts[1]))
+            if len(parts) == 2 and parts[0] == "preview":
+                return self._file(STATE.project / "work" / "preview" / engine.safe_name(parts[1]))
             if len(parts) == 2 and parts[0] == "samples":
                 return self._file(config.data_dir() / "voice-samples" / engine.safe_name(parts[1]))
         return self._json({"error": "not found"}, 404)
@@ -246,6 +256,19 @@ class Handler(BaseHTTPRequestHandler):
                                                   "installing " + friendly.LANG_NAMES.get(lang, lang) + " voice support")})
             if p == "/api/delete":
                 engine.delete_file(S.project, str(body.get("folder", "")), str(body.get("name", ""))); return self._json({"ok": True})
+            if p == "/api/projects/folder":
+                try:
+                    with S.lock:
+                        if any(j["status"] == "running" for j in S.jobs.values()):
+                            raise ValueError("Something is still running. Wait for it to finish before moving your projects.")
+                    f = config.set_projects_folder(body.get("path", ""), bool(body.get("move")))
+                    names = [x["name"] for x in config.list_projects()]
+                    if S.project_name not in names:
+                        S.switch_project(names[0] if names else config.create_project(config.DEFAULT_PROJECT))
+                    else:
+                        S.project = config._make_project(config.project_path(S.project_name))
+                    return self._json({"ok": True, "folder": f})
+                except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
             if p in ("/api/projects/create", "/api/projects/switch", "/api/projects/rename", "/api/projects/delete"):
                 try:
                     if p.endswith("create"):

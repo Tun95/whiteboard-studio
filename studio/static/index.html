@@ -20,7 +20,7 @@
     </div>
   </nav>
   <main class="content">
-    <header class="pagehead"><div><h1 id="pageTitle"></h1><p id="pageSub"></p></div></header>
+    <header class="pagehead"><div><h1 id="pageTitle"></h1><p id="pageSub"></p></div><span class="savestate" id="saveState"></span></header>
     <div id="setupBanner" class="setup hidden"></div>
     <div id="pages"></div>
   </main>
@@ -31,6 +31,11 @@
 <dialog id="projDlg" class="wide"><h3>Your projects</h3>
   <p class="note" style="margin-top:0">Each project keeps its own pictures, videos, audio, ads and edits, so work for one video never mixes with another.</p>
   <div id="projList"></div>
+  <details style="margin-top:12px"><summary class="note" style="cursor:pointer"><b>Where are my projects saved?</b> <span id="projWhere"></span></summary>
+    <p class="note" style="margin:8px 0 0">Projects are saved automatically in this folder on your computer. You can choose a different folder or drive, for example one with more space.</p>
+    <div id="projFolder"><input type="text" id="projPath" placeholder="For example: D:\My Videos"><button id="projBrowse" type="button">Browse…</button></div>
+    <label class="check" style="margin-top:8px"><input type="checkbox" id="projMove" checked> Move my existing projects to the new folder</label>
+    <div class="row" style="margin-top:8px"><button class="primary small" id="projUse" type="button">Use this folder</button></div></details>
   <div class="row" style="margin-top:12px"><input type="text" id="projNew" maxlength="60" placeholder="Name of a new project, for example: Quiz game ad" style="flex:1"><button class="primary" id="projAdd" type="button">＋ New project</button></div>
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="projClose" type="button">Close</button></div></dialog>
 <dialog id="donateDlg"><h3>Support Whiteboard Wave Studio</h3><p id="donateText"></p>

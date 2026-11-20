@@ -19,10 +19,13 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
   async function loadLib(){ lib = await api("/api/library"); }
 
   /* ------------------------------------------------------------ my ads (start page) */
+  const draftWorth = ()=> !!((d.name||"").trim() || (d.scenes||[]).some(s=>(s.headline||"").trim()&&!/^(Meet \*your app\*|Show your \*best feature\*|Download it \*free\* today)$/.test(s.headline) || s.shot || (s.voice||"").trim()));
   function renderList(){
     $("#aList",el).classList.remove("hidden"); $("#aBuild",el).classList.add("hidden");
     const packs = lib.packs;
     $("#aList",el).innerHTML = `<div class="grid2"><div>
+      ${draftWorth()?`<div class="card" style="border-color:var(--accent)"><h2>Unfinished ad</h2><p class="note" style="margin-top:0">You were making “${esc(d.name||"an ad with no name yet")}”. It was saved automatically.</p>
+        <div class="row"><button class="primary" id="aCont" type="button">Continue this ad</button></div></div>`:''}
       <div class="card"><h2>Make a new ad</h2>
         <p class="note" style="margin-top:0">Pick a phone colour, add your screenshots, type a few short lines and the app builds the advert for you. Takes about 5 minutes.</p>
         <button class="primary" id="aNew" type="button">＋ Make a new ad</button></div>
@@ -36,7 +39,9 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
       </div></div><aside><div class="card"><h2>Make the video</h2><div id="aMakeBox"></div></div><div id="aJob"></div></aside></div>`;
     mountMake($("#aMakeBox",el), false);
     job.panel = new JobPanel($("#aJob",el));
-    $("#aNew",el).onclick = ()=>{ Object.keys(d).forEach(k=>delete d[k]); Object.assign(d, blank()); st.step = 0; st.sel = 0; st.view = "build"; save(); go2(); };
+    const ac = $("#aCont",el); if(ac) ac.onclick = ()=>{ st.view = "build"; save(); go2(); };
+    $("#aNew",el).onclick = async ()=>{ if(draftWorth() && !await confirmBox("Start a new ad?", "Your unfinished ad “"+(d.name||"no name yet")+"” will be replaced. Press Continue on the start page if you want to keep working on it.", "Start new")) return;
+      Object.keys(d).forEach(k=>delete d[k]); Object.assign(d, blank()); st.step = 0; st.sel = 0; st.view = "build"; save(); go2(); };
     $("#aImport",el).onclick = ()=>$("#aFile",el).click();
     $("#aFile",el).onchange = async e=>{ const f=e.target.files[0]; if(!f) return; e.target.value="";
       try{ const r = await upload("adpack", f); st.pack = r.pack; save(); toast("Added: "+r.pack); await loadLib(); renderList(); }catch(err){ reportError(err); } };
@@ -141,7 +146,7 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
     const s = sc[st.sel]; const tall = d.size==="1080x1920";
     const opts = (list,cur)=>list.map(([k,n])=>`<option value="${k}" ${k===(cur||list[0][0])?'selected':''}>${n}</option>`).join("");
     box.innerHTML = `<div class="adscenes"><div class="card adlist"><h2>Scenes</h2>
-        ${sc.map((x,i)=>`<div class="adsc ${i===st.sel?'on':''}" data-i="${i}"><i>${i+1}</i><span>${esc((x.headline||"(empty)").replace(/\*/g,""))}</span></div>`).join("")}
+        ${sc.map((x,i)=>`<div class="adsc ${i===st.sel?'on':''}" data-i="${i}" draggable="true" title="Drag to change the order"><span class="grip">⋮⋮</span><i>${i+1}</i><span>${esc((x.headline||"(empty)").replace(/\*/g,""))}</span></div>`).join("")}
         <button type="button" id="aAddSc" class="small" style="margin-top:8px">＋ Add a scene</button></div>
       <div class="card adedit"><h2>Scene ${st.sel+1}</h2>
         <div class="adprev ${tall?'tall':''} look-${d.look}" id="aPrev2"></div>
@@ -173,7 +178,7 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
     };
     prev();
     const set = (k,v)=>{ s[k]=v; save(); };
-    $("#sHead",box).oninput = e=>{ set("headline",e.target.value); prev(); box.querySelector(".adsc.on span").textContent = (e.target.value||"(empty)").replace(/\*/g,""); };
+    $("#sHead",box).oninput = e=>{ set("headline",e.target.value); prev(); box.querySelector(".adsc.on span:not(.grip)").textContent = (e.target.value||"(empty)").replace(/\*/g,""); };
     $("#sSub",box).oninput = e=>{ set("sub",e.target.value); prev(); };
     $("#sVoice",box).oninput = e=>set("voice",e.target.value);
     $("#sSecs",box).oninput = e=>set("seconds",+e.target.value||5);
@@ -196,6 +201,15 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
     }
     box.querySelectorAll("[data-shot]").forEach(b=>b.onclick=()=>{ s.shot=b.dataset.shot; s.box=null; save(); step3(box); });
     box.querySelectorAll(".adsc").forEach(b=>b.onclick=()=>{ st.sel=+b.dataset.i; save(); step3(box); });
+    let from = -1;   // drag a scene up or down to change the order
+    box.querySelectorAll(".adsc").forEach(b=>{
+      b.ondragstart = e=>{ from = +b.dataset.i; b.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; try{ e.dataTransfer.setData("text/plain", String(from)); }catch(_){} };
+      b.ondragend = ()=>{ b.classList.remove("drag"); box.querySelectorAll(".adsc.over").forEach(x=>x.classList.remove("over")); };
+      b.ondragover = e=>{ if(from<0) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; b.classList.add("over"); };
+      b.ondragleave = ()=>b.classList.remove("over");
+      b.ondrop = e=>{ e.preventDefault(); const to = +b.dataset.i; if(from<0 || from===to) return;
+        const keep = sc[st.sel]; const [m] = sc.splice(from,1); sc.splice(to,0,m); st.sel = sc.indexOf(keep); from = -1; save(); step3(box); };
+    });
     $("#aAddSc",box).onclick = ()=>{ sc.push({headline:"", sub:"", shot:"", side:"right", box:null, pullout:false, effect:"none", motion:"zoom", voice:"", seconds:5, badge:false}); st.sel=sc.length-1; save(); step3(box); };
     $("#sUp",box).onclick = ()=>{ [sc[st.sel-1],sc[st.sel]]=[sc[st.sel],sc[st.sel-1]]; st.sel--; save(); step3(box); };
     $("#sDown",box).onclick = ()=>{ [sc[st.sel+1],sc[st.sel]]=[sc[st.sel],sc[st.sel+1]]; st.sel++; save(); step3(box); };

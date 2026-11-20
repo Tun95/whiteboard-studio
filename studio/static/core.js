@@ -95,8 +95,15 @@ async function deleteMedia(folder, name){
 // ---- app state (saved to the project on this computer)
 const App = { caps:null, voices:[], styles:[], proj:{}, pages:{}, order:[] };
 let _saveT;
-function saveProj(){ clearTimeout(_saveT); _saveT = setTimeout(()=>post("/api/project", App.proj).catch(()=>{}), 400); }
-const ps = (key, def) => (App.proj[key] = Object.assign({}, def, App.proj[key]||{}));   // per-tab saved settings
+let _dirty = false;
+function saveState(t, bad){ const e = $("#saveState"); if(!e) return; e.textContent = t; e.className = "savestate" + (bad ? " bad" : ""); }
+function saveProj(){ clearTimeout(_saveT); _dirty = true; saveState("Saving…");
+  _saveT = setTimeout(()=>post("/api/project", App.proj).then(()=>{ _dirty = false; saveState("✓ Saved automatically"); }).catch(()=>saveState("Could not save. Is the app still running?", true)), 400); }
+// Saves right away when the page is closed or refreshed, so nothing typed in the last moment is lost.
+function saveNow(){ if(!_dirty) return; clearTimeout(_saveT); try{ navigator.sendBeacon("/api/project", new Blob([JSON.stringify(App.proj)], {type:"application/json"})); _dirty = false; }catch(_){} }
+addEventListener("pagehide", saveNow); document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "hidden") saveNow(); });
+// Per-tab saved settings. Always hands back the SAME object, so everything that holds it keeps saving (a fresh copy each time made edits get lost).
+const ps = (key, def) => { const o = App.proj[key] || (App.proj[key] = {}); for(const k in def) if(!(k in o)) o[k] = def[k]; return o; };   // per-tab saved settings
 function defaultVoice(){ return (App.proj.voice && App.proj.voice.default) || "am_liam"; }
 
 // ---- pages / navigation
@@ -280,6 +287,7 @@ function initProjects(name){
   const when = t => { const d = new Date(t*1000); return d.toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}); };
   async function render(){
     const r = await api("/api/projects");
+    $("#projWhere").textContent = "· " + r.folder; if(!$("#projPath").value) $("#projPath").value = r.folder;
     list.innerHTML = r.projects.map(p=>`<div class="pack ${p.name===r.active?'sel':''}" data-n="${esc(p.name)}">
       <div style="flex:1;min-width:0"><b>${esc(p.name)}</b>${p.name===r.active?' <span class="tag">open now</span>':''}
         <div class="note">${p.videos} video${p.videos===1?'':'s'} made · ${p.files} file${p.files===1?'':'s'} · ${p.ads} ad${p.ads===1?'':'s'} · changed ${when(p.modified)}</div></div>
@@ -290,6 +298,9 @@ function initProjects(name){
   const reopen = () => { location.hash = location.hash || "#home"; location.reload(); };
   $("#projBtn").onclick = async ()=>{ await render(); dlg.showModal(); };
   $("#projClose").onclick = ()=>dlg.close();
+  $("#projBrowse").onclick = async ()=>{ try{ const r = await api("/api/pick-folder"); if(r.path) $("#projPath").value = r.path.replace(/\//g,"\\"); }catch(e){ toast(e.message, true); } };
+  $("#projUse").onclick = async ()=>{ const path = $("#projPath").value.trim(); if(!path){ toast("Please choose a folder.", true); return; }
+    try{ await flushProject(); const r = await post("/api/projects/folder", {path, move:$("#projMove").checked}); toast("Your projects are now saved in "+r.folder); location.reload(); }catch(e){ reportError(e); } };
   $("#projAdd").onclick = async ()=>{ const n = $("#projNew").value.trim();
     if(!n){ toast("Please type a name for the project.", true); return; }
     try{ await projectAction("/api/projects/create", {name:n}); reopen(); }catch(e){ reportError(e); } };

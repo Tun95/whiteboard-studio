@@ -9,7 +9,7 @@ class WhisperModel:
         if os.environ.get("STUB_OFFLINE"): raise ConnectionError("Max retries exceeded with url: /Systran/faster-whisper-%s (huggingface.co)" % model)
         d=os.path.join(download_root,"models--Systran--faster-whisper-"+model,"snapshots","abc123"); os.makedirs(d,exist_ok=True); open(os.path.join(d,"model.bin"),"w").write("x")
     def transcribe(self, audio, language=None, task="transcribe", **kw):
-        with wave.open(audio) as w: dur=w.getnframes()/w.getframerate()
+        dur=(len(audio)/16000.0) if hasattr(audio,'__len__') and not isinstance(audio,str) else 1.0
         lang=language or "en"; pre="[translated] " if task=="translate" else ""
         lines=["Hello and welcome to the show.","Today we talk about Ẹ kú àárọ̀ and how to say it.","This is the last sentence of the test file."]
         n=len(lines); segs=[_Seg(i*dur/n, (i+1)*dur/n-0.2, " "+pre+t) for i,t in enumerate(lines)]

@@ -95,6 +95,16 @@ def make_voice(text: str, out_wav: Path, voice: str, style: str, settings: dict,
     shutil.move(str(produced), str(out_wav))
     shutil.rmtree(work / (out_wav.stem + "_parts"), ignore_errors=True)
 
+def _preview_text(text: str, limit: int) -> str:
+    """The first part of the text (comments starting with # removed), cut at the end of a sentence."""
+    lines = [l for l in text.splitlines() if not l.lstrip().startswith("#")]
+    t = "\n".join(lines).strip()
+    if len(t) <= limit:
+        return t or text.strip()[:limit]
+    cut = t[:limit]
+    m = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "), cut.rfind("\n"))
+    return (cut[:m + 1] if m > limit * 0.4 else cut).strip()
+
 def make_tts(project: Path, opts: dict, settings: dict, log, step) -> Path:
     """Turns the person's own text into an audio file (WAV, plus MP3 when FFmpeg is there). Safe for very long texts: it can continue after a stop."""
     import hashlib
@@ -111,10 +121,13 @@ def make_tts(project: Path, opts: dict, settings: dict, log, step) -> Path:
     except (TypeError, ValueError): speed = None
     if speed is not None: speed = min(1.4, max(0.7, speed))
     fixes = str(opts.get("fixes") or "").strip()
+    preview = bool(opts.get("preview"))
+    if preview:   # a short sample so people can hear the voice, style, speed and fixes before making the whole thing
+        text = _preview_text(text, 1500 if opts.get("selection") else 380)
     audio = project / "audio"; audio.mkdir(exist_ok=True)
     key = hashlib.sha1("\n".join([text, voice, style, str(speed), fixes]).encode("utf-8")).hexdigest()[:10]
     work = project / "work" / "tts"; work.mkdir(parents=True, exist_ok=True)
-    stem = "tts_" + key
+    stem = ("tts_pv_" if preview else "tts_") + key
     (work / (stem + ".txt")).write_text(text, encoding="utf-8")
     (work / "pronounce.txt").write_text(fixes + "\n", encoding="utf-8") if fixes else (work / "pronounce.txt").unlink(missing_ok=True)
     cmd = [_kokoro_python(settings), str(Path(__file__).with_name("voice_kokoro.py")), "--script", str(work / (stem + ".txt")),
@@ -131,6 +144,12 @@ def make_tts(project: Path, opts: dict, settings: dict, log, step) -> Path:
     wav = work / (stem + ".wav")
     if not wav.exists():
         raise JobError("The voice step finished but no audio file was made.")
+    if preview:
+        pdir = project / "work" / "preview"; pdir.mkdir(parents=True, exist_ok=True)
+        for old in sorted(pdir.glob("*.wav"), key=lambda p: p.stat().st_mtime)[:-5]: old.unlink(missing_ok=True)
+        dest = pdir / (stem + ".wav"); shutil.move(str(wav), str(dest))
+        shutil.rmtree(work / (stem + "_parts"), ignore_errors=True); (work / (stem + ".txt")).unlink(missing_ok=True); (work / (stem + ".mp3")).unlink(missing_ok=True)
+        return dest
     base = safe_name(str(opts.get("name") or "speech")); base = Path(base).stem if Path(base).suffix.lower() in {".wav", ".mp3"} else base
     out = audio / (base + ".wav"); i = 1
     while out.exists() or (audio / (out.stem + ".mp3")).exists():

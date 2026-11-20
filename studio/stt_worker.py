@@ -9,13 +9,32 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
 
+def load_wav(path):
+    """Reads the 16 kHz mono sound file ourselves, so the speech engine never has to use its own video library
+    (some computers have an older one that crashes with: open() got an unexpected keyword argument 'metadata_errors')."""
+    import wave
+    import numpy as np
+    with wave.open(path, "rb") as w:
+        ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        raw = w.readframes(n)
+    if width != 2:
+        raise RuntimeError("Unexpected sound format")
+    x = np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0
+    if ch > 1:
+        x = x.reshape(-1, ch).mean(axis=1)
+    if rate != 16000 and len(x):
+        t = np.linspace(0, len(x) - 1, int(len(x) * 16000 / rate))
+        x = np.interp(t, np.arange(len(x)), x).astype("float32")
+    return x
+
+
 def cmd_transcribe(a):
     from faster_whisper import WhisperModel
     print("Loading the speech model. The first time, this downloads it: please wait...", flush=True)
     threads = min(8, max(2, (os.cpu_count() or 4) - 1))
     model = WhisperModel(a.model, device="cpu", compute_type="int8", download_root=a.models_dir, cpu_threads=threads)
     print("MODEL_READY", flush=True)
-    segments, info = model.transcribe(a.audio, language=a.language or None, task=a.task, beam_size=5,
+    segments, info = model.transcribe(load_wav(a.audio), language=a.language or None, task=a.task, beam_size=5,
                                       vad_filter=True, condition_on_previous_text=False)
     dur = float(info.duration or 0)
     print(f"LANGUAGE {info.language} {float(info.language_probability):.2f}", flush=True)
