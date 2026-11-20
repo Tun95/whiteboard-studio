@@ -1,16 +1,16 @@
 const ED_SIZES = [["1920x1080","Wide 16:9 · Full HD (YouTube)"],["1280x720","Wide 16:9 · smaller file"],["1080x1920","Tall 9:16 · Reels / Shorts / TikTok"],["720x1280","Tall 9:16 · smaller file"],["1080x1080","Square 1:1 · Instagram post"]];
-const edSizeOpts = (short) => ED_SIZES.map(([v,l])=>`<option value="${v}">${short ? l.split(" · ")[0] + (l.includes("smaller") ? " (small)" : l.includes("Instagram") ? "" : " · " + v.replace("x","×")) : l}</option>`).join("");
+const edSizeOpts = (short) => ED_SIZES.map(([v,l])=>`<option value="${v}">${short ? l.split(" · ")[0] + (l.includes("smaller") ? " (small)" : "") : l}</option>`).join("");
 registerPage("editor", {title:"Editor", sub:"Cut, arrange and polish your videos. Everything you change plays in the preview straight away.", icon:"film", build(el){
   el.innerHTML = `
   <div class="ed" id="edRoot">
     <div class="ed-bar">
       <div class="grp"><button id="edUndo" title="Undo the last change (Ctrl+Z)" type="button">↶</button><button id="edRedo" title="Redo (Ctrl+Y)" type="button">↷</button></div>
-      <div class="grp"><button id="edCopy" title="Copy the selected items (Ctrl+C)" type="button">⧉ Copy</button><button id="edPaste" title="Paste at the red line (Ctrl+V)" type="button">📋 Paste</button></div>
-      <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂ Cut</button><button id="edDelete" title="Remove the selected items (Delete key)" type="button">🗑 Remove</button></div>
-      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T Text</button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼 Picture</button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪ Music / voice</button></div>
+      <div class="grp"><button id="edCopy" title="Copy the selected items (Ctrl+C)" type="button">⧉<span class="lb"> Copy</span></button><button id="edPaste" title="Paste at the red line (Ctrl+V)" type="button">📋<span class="lb"> Paste</span></button></div>
+      <div class="grp"><button id="edSplit" title="Cut the clip under the playhead into two (S)" type="button">✂<span class="lb"> Cut</span></button><button id="edDelete" title="Remove the selected items (Delete key)" type="button">🗑<span class="lb"> Remove</span></button></div>
+      <div class="grp"><button id="edAddText" title="Put a title or caption on the video at the playhead" type="button">T<span class="lb"> Text</span></button><button id="edAddPic" title="Put a picture, logo, GIF or watermark on the video" type="button">🖼<span class="lb"> Picture</span></button><button id="edAddAudio" title="Add music or a voice recording" type="button">♪<span class="lb"> Music / voice</span></button></div>
       <div class="grp"><label class="ed-shape" title="The shape of your finished video. The preview changes straight away.">📐 <select id="edShape">${edSizeOpts(true)}</select></label></div>
       <div class="grp"><button id="edZoomOut" title="Zoom the timeline out (-)" type="button">−</button><span class="zl">Zoom</span><button id="edZoomIn" title="Zoom the timeline in (+)" type="button">+</button><button id="edFit" title="Fit the whole video on screen" type="button">Fit</button></div>
-      <button class="primary expo" id="edExportBtn" type="button">⬇ Export</button>
+      <button class="primary expo" id="edExportBtn" type="button">⬇<span class="lb"> Export</span></button>
     </div>
     <div class="ed-top">
       <section class="ed-pool">

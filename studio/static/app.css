@@ -178,3 +178,17 @@ button.del:hover{background:#c0392b22;border-color:var(--bad)}
 @media (max-width:1450px){.ed{min-height:810px}}   /* the toolbar wraps to two lines on smaller windows: give the screen the room back */
 dialog video{max-height:min(34vh,300px)}dialog pre.log{max-height:96px;overflow:auto}   /* export window: tall (Reels) videos and long logs must not push the buttons off screen */
 dialog{max-height:calc(100vh - 28px);overflow:auto}dialog pre.log{max-height:64px}
+/* Editor toolbar: always one tidy row, labels fold away on narrow windows */
+.ed-bar{flex-wrap:nowrap;gap:6px;overflow:hidden}
+.ed-bar .grp{gap:2px;padding:3px}
+.ed-bar .grp button{padding:6px 7px}
+.ed-bar .expo{padding:8px 14px;height:auto}
+.ed-shape select{max-width:160px}
+@media (max-width:1500px){.ed-bar .zl{display:none}.ed-shape select{max-width:140px}}
+@media (max-width:1380px){.ed-bar .grp button .lb{display:none}.ed-bar .expo .lb{display:inline}}
+.ed-bar{align-items:stretch}
+.ed-bar .expo{padding:0 16px;display:flex;align-items:center}
+.ed-bar .grp{align-items:center}
+.ed-shape select{max-width:none;width:178px;text-overflow:ellipsis}
+@media (max-width:1500px){.ed-shape select{width:150px;max-width:none}}
+@media (max-width:1100px){.ed-shape select{width:120px}}
