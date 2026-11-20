@@ -5,7 +5,8 @@ class _Seg:
 class _Info:
     def __init__(s,d,l): s.duration=d; s.language=l; s.language_probability=0.97
 class WhisperModel:
-    def __init__(self, model, device="cpu", compute_type="int8", download_root=None, cpu_threads=0):
+    def __init__(self, model, device="cpu", compute_type="int8", download_root=None, cpu_threads=0, local_files_only=False):
+        if local_files_only and not os.path.isdir(os.path.join(download_root,"models--Systran--faster-whisper-"+model)): raise OSError("model not on disk")
         if os.environ.get("STUB_OFFLINE"): raise ConnectionError("Max retries exceeded with url: /Systran/faster-whisper-%s (huggingface.co)" % model)
         d=os.path.join(download_root,"models--Systran--faster-whisper-"+model,"snapshots","abc123"); os.makedirs(d,exist_ok=True); open(os.path.join(d,"model.bin"),"w").write("x")
     def transcribe(self, audio, language=None, task="transcribe", **kw):

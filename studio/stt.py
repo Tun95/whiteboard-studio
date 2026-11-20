@@ -3,7 +3,7 @@
 The engine lives in its own small Python environment ("stt-env") so it can never disturb your voices (Kokoro) or the app.
 """
 from __future__ import annotations
-import datetime, json, re, shutil, subprocess, sys, textwrap
+import datetime, json, re, shutil, subprocess, sys, textwrap, threading
 from pathlib import Path
 from . import config
 from .engine import JobError, _find_media, _run, media_info, safe_name
@@ -11,9 +11,9 @@ from .engine import JobError, _find_media, _run, media_info, safe_name
 WORKER = Path(__file__).with_name("stt_worker.py")
 
 MODELS = [   # id is the faster-whisper model name. Sizes are the one-time download.
-    {"id": "base",   "label": "Fast",                    "size": "about 150 MB", "note": "Quick. Fine for clear speech."},
-    {"id": "small",  "label": "Balanced (recommended)",  "size": "about 480 MB", "note": "Good accuracy at a reasonable speed."},
-    {"id": "medium", "label": "Most accurate",           "size": "about 1.5 GB", "note": "Best results, but slow on a normal PC."},
+    {"id": "base",   "label": "Fast",                    "size": "about 150 MB", "bytes": 150_000_000, "note": "Quick. Fine for clear speech."},
+    {"id": "small",  "label": "Balanced (recommended)",  "size": "about 480 MB", "bytes": 480_000_000, "note": "Good accuracy at a reasonable speed."},
+    {"id": "medium", "label": "Most accurate",           "size": "about 1.5 GB", "bytes": 1_550_000_000, "note": "Best results, but slow on a normal PC."},
 ]
 # Only languages Whisper really supports (checked against faster-whisper). Igbo and Zulu are NOT supported by Whisper.
 LANGUAGES = [("", "Detect automatically"), ("en", "English"), ("yo", "Yoruba"), ("ha", "Hausa"), ("sw", "Swahili"), ("fr", "French"),
@@ -108,12 +108,27 @@ def transcribe(project: Path, spec: dict, settings: dict, log, step) -> Path:
             set_p(0.15); log("The model is ready. Listening to your audio...")
         elif line.startswith("LANGUAGE "):
             parts = line.split(); seen["lang"] = parts[1]; log(f"Language heard: {parts[1]}")
-        else:
+        elif not line.startswith("Warning: You are sending unauthenticated"):
             log(line[:160])
     if not model_downloaded(model):
         log(f"First time with this model: downloading it now ({next(m['size'] for m in MODELS if m['id']==model)}). Please keep this window open.")
-    _run([str(venv_python()), str(WORKER), "transcribe", "--audio", str(wav), "--model", model, "--models-dir", str(models_dir()),
-          "--out", str(tmp), "--language", lang, "--task", task], on_line, what="stt", skip=("PROGRESS ",))
+    have = model_downloaded(model)
+    stop = threading.Event()
+    if not have:   # show real download progress (the download library prints nothing we can read)
+        want = next(m["bytes"] for m in MODELS if m["id"] == model)
+        def watch():
+            while not stop.wait(3):
+                try: got = sum(f.stat().st_size for f in models_dir().rglob("*") if f.is_file())
+                except OSError: continue
+                set_p(0.02 + 0.12 * min(1.0, got / want))
+                log(f"Downloading the speech model: {got // 1_000_000} MB of about {want // 1_000_000} MB. This only happens once.")
+        threading.Thread(target=watch, daemon=True).start()
+    try:
+        _run([str(venv_python()), str(WORKER), "transcribe", "--audio", str(wav), "--model", model, "--models-dir", str(models_dir()),
+              "--out", str(tmp), "--language", lang, "--task", task] + (["--offline"] if have else []), on_line, what="stt",
+             skip=("PROGRESS ", "Warning: You are sending unauthenticated"))
+    finally:
+        stop.set()
     if not tmp.is_file():
         raise JobError("The transcript was not created.")
     data = json.loads(tmp.read_text(encoding="utf-8"))

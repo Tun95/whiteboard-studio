@@ -16,9 +16,11 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
     <label>File name</label><input type="text" id="tName" placeholder="my-audio">
     <div class="warn hidden" id="tWarn">The AI voice is not ready on this computer yet, so audio cannot be made. Open the app again with internet on, or see the message at the top of the page.</div>
     <div class="row"><button id="tListen" type="button">▶ Listen first</button><button class="primary" id="tMake" type="button">Make audio</button><span class="note">Your audio is saved as WAV, and also as MP3 when the video maker is ready.</span></div>
+    <div class="pvbox hidden" id="tPv"><b>Listen first</b><div class="note" id="tPvState" style="margin:4px 0"></div>
+      <div class="row" style="margin-top:6px"><button class="primary small hidden" id="tPvPlay" type="button">▶ Play the sample</button></div>
+      <audio controls class="hidden" id="tPvAudio" style="width:100%;margin-top:8px"></audio>
+      <p class="note" style="margin:8px 0 0">Only a short sample (about 20 seconds). It uses the voice, style, speed and pronunciation fixes you chose, and it is not saved. Select some words in your text to hear just those.</p></div>
   </div>
-  <div class="card hidden" id="tPv"><h2>Listen first</h2><div class="note" id="tPvState"></div><audio controls class="hidden" id="tPvAudio" style="width:100%;margin-top:8px"></audio>
-    <p class="note" style="margin-bottom:0">This is only a sample (about 20 seconds). It uses the voice, style, speed and pronunciation fixes you chose. It is not saved. Select some words in your text to hear just those.</p></div>
   <div class="card hidden" id="tOut"><h2>Your audio</h2><div class="bar"><i></i></div><div class="note" id="tState"></div><div class="perr hidden" id="tErr"></div>
     <audio controls class="hidden" id="tAudio" style="width:100%;margin-top:10px"></audio><div class="row dlrow hidden" id="tDl"></div>
     <p class="note hidden" id="tSaved">It is also saved in your Library (Audio), and you can use it in the Editor.</p></div>`;
@@ -50,11 +52,13 @@ registerPage("tts", {title:"Text to speech", sub:"Type or paste your own text, p
     keep(); const s = sel(), txt = s || T.value;
     if(!txt.trim()){ toast("Type or paste some text first.", true); return; }
     const box = $("#tPv",el), pst = $("#tPvState",el), pa = $("#tPvAudio",el);
-    box.classList.remove("hidden"); pa.classList.add("hidden"); pa.pause(); pst.textContent = "Getting a sample ready… about a minute the first time."; lb.disabled = true;
+    box.classList.remove("hidden"); pa.classList.add("hidden"); $("#tPvPlay",el).classList.add("hidden"); pa.pause(); pst.textContent = "Getting a sample ready… about a minute the first time."; lb.disabled = true;
     try{
       const j = await runJob("/api/tts/make", {text:txt, selection:!!s, preview:true, voice:picker.get(), style:st.style, speed:st.speed, fixes:st.fixes},
         {onTick:j=>{ pst.textContent = lastLine(j) || "Working…"; }, onNote:m=>{ pst.textContent = m; }});
-      pa.src = "/files/preview/" + encodeURIComponent(j.output) + "?t=" + Date.now(); pa.classList.remove("hidden"); pst.textContent = "Ready. Press play if it does not start by itself.";
+      const pp = $("#tPvPlay",el); pa.onerror = ()=>{ pst.textContent = "The sample could not be played. Please press “Listen first” again."; };
+      pa.src = "/files/preview/" + encodeURIComponent(j.output) + "?t=" + Date.now(); pa.load(); pa.classList.remove("hidden"); pp.classList.remove("hidden"); pp.onclick = ()=>{ pa.currentTime = 0; pa.play().catch(()=>{ pst.textContent = "Press the play button on the player below."; }); };
+      pst.textContent = "Your sample is ready."; box.scrollIntoView({block:"nearest", behavior:"smooth"});
       pa.play().catch(()=>{});
     }catch(e){ pst.textContent = ""; const info = e.info || {title:"Could not make the sample", what:e.message}; pst.innerHTML = problemHTML(info); wireProblem(pst, info); }
     lb.disabled = false;

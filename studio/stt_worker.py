@@ -7,6 +7,7 @@ import argparse, json, os, sys, unicodedata
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "15"); os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")
 
 
 def load_wav(path):
@@ -32,7 +33,8 @@ def cmd_transcribe(a):
     from faster_whisper import WhisperModel
     print("Loading the speech model. The first time, this downloads it: please wait...", flush=True)
     threads = min(8, max(2, (os.cpu_count() or 4) - 1))
-    model = WhisperModel(a.model, device="cpu", compute_type="int8", download_root=a.models_dir, cpu_threads=threads)
+    model = WhisperModel(a.model, device="cpu", compute_type="int8", download_root=a.models_dir, cpu_threads=threads,
+                         local_files_only=bool(a.offline))   # model already on this computer: never ask the internet (it could hang)
     print("MODEL_READY", flush=True)
     segments, info = model.transcribe(load_wav(a.audio), language=a.language or None, task=a.task, beam_size=5,
                                       vad_filter=True, condition_on_previous_text=False)
@@ -135,7 +137,7 @@ def cmd_export(a):
 def main():
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("transcribe"); t.add_argument("--audio", required=True); t.add_argument("--model", default="small")
-    t.add_argument("--models-dir", required=True); t.add_argument("--out", required=True)
+    t.add_argument("--models-dir", required=True); t.add_argument("--offline", action="store_true"); t.add_argument("--out", required=True)
     t.add_argument("--language", default=""); t.add_argument("--task", default="transcribe", choices=["transcribe", "translate"])
     e = sub.add_parser("export"); e.add_argument("--in", dest="inp", required=True); e.add_argument("--format", required=True, choices=["docx", "pdf"]); e.add_argument("--out", required=True)
     a = ap.parse_args()

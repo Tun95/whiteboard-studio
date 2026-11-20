@@ -12,7 +12,8 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
   const d = App.proj.adDraft = Object.assign(blank(), App.proj.adDraft || {});
   let lib = {images:[], screenshots:[], audio:[], packs:[]};
   el.innerHTML = `<div id="aList"></div><div id="aBuild" class="hidden"></div>`;
-  const job = {};
+  const job = {}; let working = false;
+  const lockNav = on => { working = on; el.querySelectorAll("#aBuild .adstep, #aPrev, #aNext, #aBack2List").forEach(b=>{ b.disabled = on || (b.id==="aPrev" && st.step===0); b.title = on ? "Please wait until your video is finished." : ""; }); };
 
   const imgUrl = n => "/files/" + ((lib.screenshots||[]).some(i=>i.name===n) ? "screenshots" : "images") + "/" + encodeURIComponent(n);
   const save = () => saveProj();
@@ -82,7 +83,7 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
       $("#aMake",box).disabled = !!msg || $("#aMake",box).dataset.busy==="1";
     }
     $("#aMake",box).onclick = async ()=>{
-      const b=$("#aMake",box); b.dataset.busy="1"; b.disabled=true;
+      const b=$("#aMake",box); b.dataset.busy="1"; b.disabled=true; lockNav(true);
       try{
         let name = st.pack;
         if(fromWizard){ name = (await post("/api/ads/save", d)).name; st.pack = name; save(); }
@@ -90,7 +91,7 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
         const mv = fromWizard ? anyVoice() : !!(p && p.has_script);
         await job.panel.run("/api/ads/render", {pack:name, preview:st.preview, make_voice:mv && !st.preview, voice:vp.get(), style:st.style, size:"", scene:""});
       }catch(err){ reportError(err); }
-      b.dataset.busy="0"; await loadLib(); check();
+      b.dataset.busy="0"; lockNav(false); await loadLib(); check();
     };
     document.addEventListener("capsready", check);
     check();
@@ -111,6 +112,7 @@ registerPage("ads", {title:"App ads", sub:"Make an advert for your app: a phone,
     $("#aPrev",root).onclick = ()=>{ st.step=Math.max(0,st.step-1); save(); renderBuild(); window.scrollTo(0,0); };
     $("#aNext",root).onclick = ()=>{ if(st.step===0 && !(d.name||"").trim()){ toast("Please type a name for your ad first.", true); $("#aName",root).focus(); return; } st.step=Math.min(STEPS.length-1,st.step+1); save(); renderBuild(); window.scrollTo(0,0); };
     [step1,step2,step3,step4,step5][st.step]($("#aStep",root));
+    if(working) lockNav(true);
   }
 
   function step1(box){

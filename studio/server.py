@@ -56,7 +56,7 @@ class State:
         with self.lock:
             busy = next((j for j in self.jobs.values() if j["status"] == "running"), None)
             if busy:
-                raise ValueError(f"Something is still running: {busy.get('title', 'a job')}. Wait for it to finish before changing project.")
+                raise ValueError(f"Please wait: {busy.get('title', 'another task')} is still in progress. Change project when it has finished.")
             self.project = config._make_project(config.project_path(name)); self.project_name = self.project.name
             config.set_active_project(self.project_name)
 
@@ -68,7 +68,7 @@ class State:
         with self.lock:
             busy = next((j for j in self.jobs.values() if j["status"] == "running"), None)
             if busy:
-                err = RuntimeError(f"Something is still running: {busy.get('title', 'a job')}. Wait for it to finish; it can take several minutes.")
+                err = RuntimeError(f"Please wait: {busy.get('title', 'another task')} is still in progress. When it is finished you can start this. It can take several minutes.")
                 err.running_id = busy["id"]
                 raise err
             jid = uuid.uuid4().hex[:10]
@@ -230,14 +230,14 @@ class Handler(BaseHTTPRequestHandler):
                 (S.project / "project.json").write_text(json.dumps(body, indent=2), encoding="utf-8"); return self._json({"ok": True})
             if p == "/api/render":
                 sc, op = body.get("scenes", []), body.get("opts", {})
-                return self._json({"id": S.start_job(len(sc) + 1, lambda log, step: engine.run_job(S.project, sc, op, S.settings, log, step))})
+                return self._json({"id": S.start_job(len(sc) + 1, lambda log, step: engine.run_job(S.project, sc, op, S.settings, log, step), "making your video")})
             if p == "/api/manhwa/render":
                 sc, op = body.get("panels", []), body.get("opts", {})
-                return self._json({"id": S.start_job(len(sc) + 1, lambda log, step: engine.run_manhwa(S.project, sc, op, S.settings, log, step))})
+                return self._json({"id": S.start_job(len(sc) + 1, lambda log, step: engine.run_manhwa(S.project, sc, op, S.settings, log, step), "making your video")})
             if p == "/api/ads/render":
-                return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step))})
+                return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step), "making your ad")})
             if p == "/api/edit/render":
-                return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step))})
+                return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step), "exporting your edited video")})
             if p == "/api/stt/install":
                 return self._json({"id": S.start_job(3, lambda log, step: stt.install(S.settings, log, step), "installing the transcription add-on")})
             if p == "/api/stt/transcribe":
@@ -260,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     with S.lock:
                         if any(j["status"] == "running" for j in S.jobs.values()):
-                            raise ValueError("Something is still running. Wait for it to finish before moving your projects.")
+                            raise ValueError("Please wait for the task that is running to finish before moving your projects.")
                     f = config.set_projects_folder(body.get("path", ""), bool(body.get("move")))
                     names = [x["name"] for x in config.list_projects()]
                     if S.project_name not in names:

@@ -165,7 +165,8 @@ class JobPanel{
     const b = this.box; this.perr.classList.add("hidden"); b.classList.remove("hidden"); this.video.classList.add("hidden"); this.save.classList.add("hidden");
     this.log.classList.remove("hidden"); this.log.textContent = ""; this.bar.style.width = "3%"; this.state.textContent = "Working… this can take a few minutes.";
     let id;
-    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = ""; this.log.classList.add("hidden"); this.fail(e.info || {title:"Could not start", what:e.message}); return null; }
+    try{ ({id} = await post(path, body)); }catch(e){ this.state.textContent = ""; this.bar.style.width = "0%"; this.log.classList.add("hidden");
+      this.fail(e.info || (e.data && e.data.running_id ? {title:"Please wait a moment", what:e.message, fix:"Another task is running. When it finishes, press the button again.", details:""} : {title:"Could not start", what:e.message})); return null; }
     while(true){
       await new Promise(r=>setTimeout(r,1200));
       let j; try{ j = await api("/api/job?id="+id); }catch(e){ this.state.textContent = e.message; return null; }
@@ -264,7 +265,7 @@ function sceneEditor({mount, key, noun, extra}){
 async function runJob(path, body, ui){
   ui = ui || {}; let id;
   try{ ({id} = await post(path, body)); }
-  catch(e){ if(e.data && e.data.running_id){ id = e.data.running_id; ui.onNote && ui.onNote(e.message); } else throw e; }
+  catch(e){ if(e.data && e.data.running_id){ const w = new Error(e.message); w.info = {title:"Please wait a moment", what:e.message, fix:"Watch the progress on the page where you started it, then try again.", details:""}; throw w; } throw e; }
   while(true){
     await new Promise(r => setTimeout(r, 1000));
     const j = await api("/api/job?id=" + id);
