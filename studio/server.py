@@ -4,7 +4,7 @@ import json, mimetypes, shutil, socket, threading, time, traceback, uuid, webbro
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
-from . import __version__, adbuilder, config, engine, friendly, stt, voices
+from . import __version__, adbuilder, config, engine, friendly, picmaker, stt, voices
 
 STATIC = Path(__file__).with_name("static")
 MAX_UPLOAD = 500 * 1024 * 1024
@@ -213,6 +213,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/ads/spec":
             try: return self._json(adbuilder.load(STATE.project, (q.get("name") or [""])[0]))
             except (ValueError, OSError) as e: return self._json({"error": str(e)}, 400)
+        if p == "/api/pic/status": return self._json(picmaker.status())
+        if p == "/api/pic/list": return self._json({"pictures": picmaker.list_doodles(STATE.project)})
         if p == "/api/stt/status": return self._json(stt.status())
         if p == "/api/stt/list": return self._json(stt.list_transcripts(STATE.project))
         if p == "/api/stt/get":
@@ -263,6 +265,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"id": S.start_job(2, lambda log, step: engine.run_ad(S.project, body, S.settings, log, step), "making your ad")})
             if p == "/api/edit/render":
                 return self._json({"id": S.start_job(1, lambda log, step: engine.run_edit(S.project, body, log, step), "exporting your edited video")})
+            if p == "/api/pic/install":
+                return self._json({"id": S.start_job(5, lambda log, step: picmaker.install(S.settings, str(body.get("quality") or "standard"), log, step), "setting up the picture maker")})
+            if p == "/api/pic/make":
+                n = max(1, min(4, int(body.get("count") or 1)))
+                return self._json({"id": S.start_job(n, lambda log, step: picmaker.generate(S.project, body, S.settings, log, step), "drawing your pictures")})
             if p == "/api/stt/install":
                 return self._json({"id": S.start_job(3, lambda log, step: stt.install(S.settings, log, step), "installing the transcription add-on")})
             if p == "/api/stt/transcribe":

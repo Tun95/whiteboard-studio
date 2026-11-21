@@ -252,3 +252,4 @@ button.del{color:var(--bad)}button.small{padding:4px 10px;font-size:13px}
 
 [hidden]{display:none!important}
 .pvbox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.exchip{font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:var(--soft);color:var(--ink);cursor:pointer}.exchip:hover{border-color:var(--brand)}

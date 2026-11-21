@@ -14,6 +14,10 @@ Everything the app uses is free software that anyone may use, including for comm
 | python-docx | Word files | MIT | |
 | ReportLab | PDF files | BSD | |
 | DejaVu Sans (studio/fonts) | Font for PDFs | Free licence (Bitstream Vera + public domain) | Allows use and sharing; see studio/fonts/DejaVu-LICENSE.txt |
+| stable-diffusion.cpp (leejet) | Runs the doodle picture model on this computer | MIT | Downloaded once by the app from its GitHub releases |
+| Z-Image Turbo (Alibaba Tongyi-MAI), GGUF files by leejet | Draws the doodle pictures | Apache-2.0 | Downloaded once from Hugging Face, no login |
+| Qwen3-4B-Instruct (Alibaba) | Understands the picture description | Apache-2.0 | Downloaded once, no login |
+| FLUX / Z-Image "ae" VAE (Black Forest Labs), public copy by Comfy-Org | Turns the result into pixels | Apache-2.0 | The original repository asks for a sign-in, so the app uses the public copy (checked with a SHA-256 checksum) |
 | FFmpeg | Video and audio processing | LGPL-2.1+ or GPL-2+ (depends on the build) | Free to use. Not included in the source code; when we add an installer we must pick a build and credit it |
 | NumPy, Pillow | Maths and images | BSD-style | |
 

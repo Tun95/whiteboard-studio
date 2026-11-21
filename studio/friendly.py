@@ -28,7 +28,7 @@ LANG_MODULES = {
     "z": ("jieba", "pypinyin", "cn2an", "ordered_set", "ordered-set", "pypinyin_dict"),
 }
 WHAT = {"voice": "making the voice", "video": "drawing the video", "ad": "making the ad",
-        "export": "exporting the file", "stt": "turning speech into text", "manhwa": "building the manhwa video", "step": "running a step"}
+        "export": "exporting the file", "stt": "turning speech into text", "manhwa": "building the manhwa video", "pic": "drawing the picture", "step": "running a step"}
 
 def _tail(lines, n=40):
     return "\n".join(lines[-n:])
@@ -43,6 +43,20 @@ def explain(lines: list[str], what: str = "step", voice: str = "") -> dict:
     def out(title, what_, fix, action=None):
         return {"title": title, "what": what_, "fix": fix, "action": action, "details": details}
 
+    # 00a) picture maker
+    if what == "pic":
+        if any(k in low for k in ("bad_alloc", "out of memory", "failed to allocate", "cannot allocate", "not enough memory", "insufficient memory")):
+            return out("Not enough memory for the picture",
+                       "The picture maker needs about 8 GB of free memory (RAM). This computer ran out while drawing.",
+                       "Close other programs (browsers with many tabs use a lot), choose “Square” and 1 picture, then try again. If it keeps happening, set up the “Smallest download” version.")
+        if any(k in low for k in ("illegal instruction", "0xc000001d", "-1073741795")):
+            return out("This computer's processor is too old for the picture maker",
+                       "The free picture engine needs a processor made after about 2014 (one with “AVX2”). This one does not have it.",
+                       "The rest of the app works as usual. You can still use your own pictures.")
+        if any(k in low for k in ("failed to load model", "load model failed", "model file", "gguf", "no such file")):
+            return out("The picture maker files are missing or damaged",
+                       "One of the downloaded picture files could not be opened.",
+                       "Press “Set up the picture maker” again. Files that are already complete are kept, so it only fetches what is missing.")
     # 00) speech-to-text and PDF problems
     if "error_pdf_script" in low or "error_pdf_font" in low:
         return out("A PDF cannot show this language yet",
